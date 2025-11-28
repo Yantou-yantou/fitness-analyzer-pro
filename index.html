@@ -1,0 +1,2649 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>健身分析 - 运动与营养平衡</title>
+    <!-- Tailwind CSS v3 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <!-- 统一的 Tailwind 配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1e88e5',
+                        secondary: '#ff9800',
+                        success: '#4caf50',
+                        warning: '#ff5722',
+                        info: '#03a9f4',
+                        light: '#f5f5f5',
+                        dark: '#263238'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <script>
+        // 绑定模态框事件
+        document.addEventListener('DOMContentLoaded', function() {
+            const addFoodModal = document.getElementById('addFoodModal');
+            const closeAddFoodModalBtn = document.getElementById('closeModal');
+            const cancelAddFoodBtn = document.getElementById('cancelAddFood');
+            const addFoodForm = document.getElementById('addFoodForm');
+            
+            const learnMoreModal = document.getElementById('learnMoreModal');
+            const closeLearnMoreModalBtn = document.getElementById('closeLearnMoreModal');
+            const closeLearnMoreBtn = document.getElementById('closeLearnMoreBtn');
+            
+            // 关闭添加食物模态框
+            if (closeAddFoodModalBtn) {
+                closeAddFoodModalBtn.addEventListener('click', hideAddFoodModal);
+            }
+            
+            if (cancelAddFoodBtn) {
+                cancelAddFoodBtn.addEventListener('click', hideAddFoodModal);
+            }
+            
+            // 点击添加食物模态框外部关闭
+            if (addFoodModal) {
+                addFoodModal.addEventListener('click', function(e) {
+                    if (e.target === addFoodModal) {
+                        hideAddFoodModal();
+                    }
+                });
+            }
+            
+            // 关闭了解更多模态框
+            if (closeLearnMoreModalBtn) {
+                closeLearnMoreModalBtn.addEventListener('click', hideLearnMoreModal);
+            }
+            
+            if (closeLearnMoreBtn) {
+                closeLearnMoreBtn.addEventListener('click', hideLearnMoreModal);
+            }
+            
+            // 点击了解更多模态框外部关闭
+            if (learnMoreModal) {
+                learnMoreModal.addEventListener('click', function(e) {
+                    if (e.target === learnMoreModal) {
+                        hideLearnMoreModal();
+                    }
+                });
+            }
+            
+            // 提交添加食物表单
+            if (addFoodForm) {
+                form.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    const foodName = document.getElementById('foodNameInput').value.trim();
+                    const amount = parseFloat(document.getElementById('foodAmountInput').value);
+                    const mealType = document.getElementById('mealTypeInput').value;
+                    
+                    // 验证输入
+                    if (!foodName || isNaN(amount) || amount <= 0) {
+                        alert('请填写完整的食物信息');
+                        return;
+                    }
+                    
+                    // 检查食物数据库
+                    let foundFood = null;
+                    let foundKey = null;
+                    
+                    // 精确匹配
+                    if (foodDatabase[foodName]) {
+                        foundFood = foodDatabase[foodName];
+                        foundKey = foodName;
+                    } else {
+                        // 模糊匹配
+                        for (const key in foodDatabase) {
+                            if (key.includes(foodName) || foodName.includes(key)) {
+                                foundFood = foodDatabase[key];
+                                foundKey = key;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (!foundFood) {
+                        alert('未找到该食物的营养信息，请尝试其他食物');
+                        return;
+                    }
+                    
+                    // 计算实际摄入量（根据份量调整）
+                    const ratio = amount / 100; // 数据库中是100克的营养成分
+                    const actualCalories = Math.round(foundFood.calories * ratio);
+                    const actualProtein = (foundFood.protein * ratio).toFixed(1);
+                    const actualFat = (foundFood.fat * ratio).toFixed(1);
+                    const actualCarbs = (foundFood.carbs * ratio).toFixed(1);
+                    
+                    // 添加到今日饮食
+                    const foodItem = {
+                        name: foundKey,
+                        amount: amount,
+                        calories: actualCalories,
+                        protein: actualProtein,
+                        fat: actualFat,
+                        carbs: actualCarbs,
+                        time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+                    };
+                    
+                    todayDiet[mealType].push(foodItem);
+                    
+                    // 更新总摄入热量
+                    updateTotalIntake();
+                    
+                    // 显示成功提示
+                    alert(`${foundKey} (${amount}克) 已成功添加到${mealType === 'breakfast' ? '早餐' : mealType === 'lunch' ? '午餐' : mealType === 'dinner' ? '晚餐' : '加餐'}`);
+                    
+                    // 重置表单并关闭模态框
+                    form.reset();
+                    hideAddFoodModal();
+                });
+            }
+        });
+        
+        // 更新总摄入热量显示
+        function updateTotalIntake() {
+            let totalCalories = 0;
+            let totalProtein = 0;
+            let totalFat = 0;
+            let totalCarbs = 0;
+            
+            // 计算所有餐次的总和
+            for (const mealType in todayDiet) {
+                todayDiet[mealType].forEach(food => {
+                    totalCalories += food.calories;
+                    totalProtein += parseFloat(food.protein);
+                    totalFat += parseFloat(food.fat);
+                    totalCarbs += parseFloat(food.carbs);
+                });
+            }
+            
+            // 更新仪表盘显示
+            const calorieIntakeElement = document.querySelector('#dashboard .text-3xl.font-bold.text-gray-800');
+            if (calorieIntakeElement) {
+                calorieIntakeElement.textContent = totalCalories;
+            }
+            
+            // 更新营养摄入分布图表
+            const nutritionChart = Chart.getChart('nutritionChart');
+            if (nutritionChart) {
+                // 计算百分比
+                const totalNutrients = totalProtein + totalFat + totalCarbs;
+                const proteinPercent = totalNutrients > 0 ? Math.round((totalProtein * 4 / totalCalories) * 100) : 0; // 蛋白质4卡/克
+                const fatPercent = totalNutrients > 0 ? Math.round((totalFat * 9 / totalCalories) * 100) : 0; // 脂肪9卡/克
+                const carbsPercent = totalNutrients > 0 ? Math.round((totalCarbs * 4 / totalCalories) * 100) : 0; // 碳水4卡/克
+                
+                nutritionChart.data.datasets[0].data = [proteinPercent, fatPercent, carbsPercent];
+                nutritionChart.update();
+            }
+            
+            // 更新营养摄入详情
+            const proteinDetailElement = document.querySelector('#dashboard .text-sm.font-medium.text-gray-800');
+            if (proteinDetailElement) {
+                proteinDetailElement.textContent = `${totalProtein.toFixed(1)}g (${Math.round((totalProtein * 4 / totalCalories) * 100)}%)`;
+            }
+            
+            // 更新蛋白质进度条
+            const proteinBarElement = document.querySelector('#dashboard .bg-blue-500.h-full.rounded-full');
+            if (proteinBarElement) {
+                proteinBarElement.style.width = `${Math.min(100, (totalProtein / 150) * 100)}%`; // 假设目标150g
+            }
+            
+            // 更新能量平衡
+            const energyBalanceElement = document.querySelector('#dashboard .text-3xl.font-bold.text-success');
+            if (energyBalanceElement) {
+                const energyOut = 2200; // 假设消耗2200卡
+                const balance = totalCalories - energyOut;
+                energyBalanceElement.textContent = balance > 0 ? `+${balance}` : balance;
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .text-shadow {
+                text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .card-hover {
+                @apply transition-all duration-300 hover:shadow-lg hover:-translate-y-1;
+            }
+            .btn-primary {
+                @apply bg-primary text-white px-4 py-2 rounded-md hover:bg-opacity-90 transition-all;
+            }
+            .btn-secondary {
+                @apply bg-secondary text-white px-4 py-2 rounded-md hover:bg-opacity-90 transition-all;
+            }
+            .input-field {
+                @apply w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent;
+            }
+            .tab-active {
+                @apply border-b-2 border-primary text-primary;
+            }
+            .tab-inactive {
+                @apply text-gray-500 hover:text-primary;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans">
+    <!-- 顶部导航栏 -->
+    <nav class="bg-primary text-white shadow-md">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <img src="https://p26-doubao-search-sign.byteimg.com/labis/image/05aab402eccab2104c3d015999b97ba1~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1779859506&x-signature=62UebB1fFNmdumBCU0teoqOmatc%3D" alt="健身分析" class="h-8 w-8">
+                <h1 class="text-xl font-bold">健身分析</h1>
+            </div>
+            <div class="hidden md:flex space-x-6">
+                <a href="#dashboard" class="hover:text-secondary transition-colors">仪表盘</a>
+                <a href="#exercise" class="hover:text-secondary transition-colors">运动分析</a>
+                <a href="#recovery" class="hover:text-secondary transition-colors">恢复时间</a>
+                <a href="#nutrition" class="hover:text-secondary transition-colors">营养分析</a>
+            </div>
+            <div class="flex items-center space-x-4">
+                <button class="bg-secondary rounded-full px-4 py-1 text-sm font-medium hover:bg-opacity-90 transition-all">
+                    登录
+                </button>
+                <button class="md:hidden focus:outline-none">
+                    <i class="fa fa-bars"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容区 -->
+    <main class="container mx-auto px-4 py-8">
+        <!-- 欢迎区域 -->
+        <section class="mb-12">
+            <div class="bg-gradient-to-r from-primary to-info rounded-xl shadow-lg overflow-hidden">
+                <div class="md:flex">
+                    <div class="md:w-1/2 p-8 md:p-12 flex flex-col justify-center">
+                        <h2 class="text-3xl md:text-4xl font-bold text-white mb-4 text-shadow">
+                            科学健身，<br>从能量平衡开始
+                        </h2>
+                        <p class="text-white text-lg mb-6 opacity-90">
+                            精准追踪你的运动消耗与营养摄入，优化你的健身计划，实现健康生活目标。
+                        </p>
+                        <div class="flex space-x-4">
+                            <button id="startAnalysisBtn" class="bg-white text-primary font-medium px-6 py-3 rounded-md hover:bg-opacity-90 transition-all cursor-pointer">
+                                开始分析
+                            </button>
+                            <button id="learnMoreBtn" class="border border-white text-white font-medium px-6 py-3 rounded-md hover:bg-white hover:bg-opacity-10 transition-all cursor-pointer">
+                                了解更多
+                            </button>
+                        </div>
+                    </div>
+                    <div class="md:w-1/2">
+                        <img src="https://p9-flow-imagex-sign.byteimg.com/tos-cn-i-a9rns2rl98/rc/pc/super_tool/81a2d748d21c467a8e3ce829411dbc4e~tplv-a9rns2rl98-image.image?rcl=2025112813245466D8EADC6501C369575&rk3s=8e244e95&rrcfp=f06b921b&x-expires=1766899537&x-signature=6n4XhMPvLE4Pvy%2BB4JZWR4FvOqc%3D" alt="健身分析仪表盘" class="w-full h-full object-cover">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 仪表盘区域 -->
+        <section id="dashboard" class="mb-12">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800">能量平衡仪表盘</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- 今日能量摄入 -->
+                <div class="bg-white rounded-xl shadow-md p-6 card-hover">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold text-gray-800">今日能量摄入</h3>
+                        <span class="text-primary">
+                            <i class="fa fa-cutlery"></i>
+                        </span>
+                    </div>
+                    <div class="flex items-end justify-between">
+                        <div>
+                            <p class="text-3xl font-bold text-gray-800">1,850</p>
+                            <p class="text-sm text-gray-500">卡路里 (kcal)</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-sm text-success">
+                                <i class="fa fa-arrow-down"></i> 5%
+                            </p>
+                            <p class="text-xs text-gray-500">相比昨日</p>
+                        </div>
+                    </div>
+                    <div class="mt-4 h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div class="bg-secondary h-full rounded-full" style="width: 65%"></div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">目标: 2,850 kcal</p>
+                </div>
+
+                <!-- 今日能量消耗 -->
+                <div class="bg-white rounded-xl shadow-md p-6 card-hover">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold text-gray-800">今日能量消耗</h3>
+                        <span class="text-secondary">
+                            <i class="fa fa-bolt"></i>
+                        </span>
+                    </div>
+                    <div class="flex items-end justify-between">
+                        <div>
+                            <p class="text-3xl font-bold text-gray-800">2,200</p>
+                            <p class="text-sm text-gray-500">卡路里 (kcal)</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-sm text-success">
+                                <i class="fa fa-arrow-up"></i> 12%
+                            </p>
+                            <p class="text-xs text-gray-500">相比昨日</p>
+                        </div>
+                    </div>
+                    <div class="mt-4 h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div class="bg-primary h-full rounded-full" style="width: 77%"></div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">目标: 2,850 kcal</p>
+                </div>
+
+                <!-- 能量平衡 -->
+                <div class="bg-white rounded-xl shadow-md p-6 card-hover">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold text-gray-800">能量平衡</h3>
+                        <span class="text-success">
+                            <i class="fa fa-balance-scale"></i>
+                        </span>
+                    </div>
+                    <div class="flex items-end justify-between">
+                        <div>
+                            <p class="text-3xl font-bold text-success">-350</p>
+                            <p class="text-sm text-gray-500">卡路里 (kcal)</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-sm text-success">
+                                <i class="fa fa-check-circle"></i> 良好
+                            </p>
+                            <p class="text-xs text-gray-500">减脂区间</p>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <canvas id="balanceChart" height="60"></canvas>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">建议每日赤字: 300-500 kcal</p>
+                </div>
+            </div>
+
+            <!-- 营养摄入分布 -->
+            <div class="mt-8 bg-white rounded-xl shadow-md p-6">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">营养摄入分布</h3>
+                <div class="md:flex">
+                    <div class="md:w-1/2">
+                        <canvas id="nutritionChart" height="250"></canvas>
+                    </div>
+                    <div class="md:w-1/2 mt-6 md:mt-0 md:pl-8">
+                        <h4 class="font-medium text-gray-800 mb-3">营养摄入详情</h4>
+                        <div class="space-y-4">
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm text-gray-600">蛋白质</span>
+                                    <span class="text-sm font-medium text-gray-800">120g (21%)</span>
+                                </div>
+                                <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                    <div class="bg-blue-500 h-full rounded-full" style="width: 21%"></div>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-1">目标: 150g (25%)</p>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm text-gray-600">脂肪</span>
+                                    <span class="text-sm font-medium text-gray-800">65g (32%)</span>
+                                </div>
+                                <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                    <div class="bg-yellow-500 h-full rounded-full" style="width: 32%"></div>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-1">目标: 60g (30%)</p>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm text-gray-600">碳水化合物</span>
+                                    <span class="text-sm font-medium text-gray-800">240g (47%)</span>
+                                </div>
+                                <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                    <div class="bg-green-500 h-full rounded-full" style="width: 47%"></div>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-1">目标: 270g (45%)</p>
+                            </div>
+                        </div>
+                        <button id="addFoodBtn" class="btn-primary mt-6 w-full">
+                            <i class="fa fa-plus-circle mr-2"></i> 添加今日饮食
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 运动分析区域 -->
+        <section id="exercise" class="mb-12">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800">运动能量消耗分析</h2>
+            
+            <!-- 运动计算器 -->
+            <div class="bg-white rounded-xl shadow-md p-6 mb-8">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">运动卡路里计算器</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">运动类型</label>
+                        <select id="exerciseType" class="input-field">
+                            <option value="">请选择运动类型</option>
+                            <option value="running">跑步</option>
+                            <option value="walking">快走</option>
+                            <option value="swimming">游泳</option>
+                            <option value="cycling">骑行</option>
+                            <option value="basketball">篮球</option>
+                            <option value="tennis">网球</option>
+                            <option value="yoga">瑜伽</option>
+                            <option value="hiit">高强度间歇训练(HIIT)</option>
+                            <option value="weightlifting">力量训练</option>
+                            <option value="jumping">跳绳</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">运动时长 (分钟)</label>
+                        <input type="number" id="exerciseDuration" class="input-field" placeholder="例如: 30">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">体重 (公斤)</label>
+                        <input type="number" id="userWeight" class="input-field" placeholder="例如: 60">
+                    </div>
+                </div>
+                <div class="mt-6">
+                    <button id="calculateCalories" class="btn-primary">
+                        <i class="fa fa-calculator mr-2"></i> 计算消耗卡路里
+                    </button>
+                </div>
+            </div>
+
+            <!-- 计算结果 -->
+            <div id="calorieResult" class="bg-white rounded-xl shadow-md p-6 mb-8 hidden">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-800">计算结果</h3>
+                    <span class="text-primary">
+                        <i class="fa fa-fire"></i>
+                    </span>
+                </div>
+                <div class="flex flex-col md:flex-row items-center justify-between">
+                    <div class="text-center md:text-left mb-4 md:mb-0">
+                        <p class="text-sm text-gray-600">您的运动消耗</p>
+                        <p id="caloriesBurned" class="text-4xl font-bold text-primary">0</p>
+                        <p class="text-sm text-gray-600">卡路里 (kcal)</p>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button class="btn-secondary">
+                            <i class="fa fa-plus mr-2"></i> 添加到今日记录
+                        </button>
+                        <button class="border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50 transition-all">
+                            <i class="fa fa-share-alt mr-2"></i> 分享
+                        </button>
+                    </div>
+                </div>
+                <div class="mt-6">
+                    <h4 class="font-medium text-gray-800 mb-2">相当于</h4>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="bg-gray-50 p-3 rounded-lg text-center">
+                            <img src="https://p26-doubao-search-sign.byteimg.com/tos-cn-i-be4g95zd3a/966378035582074897~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1779859506&x-signature=3dYin38dooIlsnQDb8OyM%2FLqZhI%3D" alt="食物" class="h-8 w-8 mx-auto mb-2">
+                            <p class="text-xs text-gray-600">约 2.5 碗米饭</p>
+                        </div>
+                        <div class="bg-gray-50 p-3 rounded-lg text-center">
+                            <img src="https://p26-doubao-search-sign.byteimg.com/tos-cn-i-be4g95zd3a/1836818458688618499~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1779859506&x-signature=xuUGTnk1oEyCX0ccXgvEaE7QzBY%3D" alt="食物" class="h-8 w-8 mx-auto mb-2">
+                            <p class="text-xs text-gray-600">约 4 个鸡蛋</p>
+                        </div>
+                        <div class="bg-gray-50 p-3 rounded-lg text-center">
+                            <img src="https://p26-doubao-search-sign.byteimg.com/tos-cn-i-be4g95zd3a/966378087113293837~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1779859506&x-signature=A9JotZWHJWQ8RJlbC9t21BqF2cM%3D" alt="食物" class="h-8 w-8 mx-auto mb-2">
+                            <p class="text-xs text-gray-600">约 1.5 根香蕉</p>
+                        </div>
+                        <div class="bg-gray-50 p-3 rounded-lg text-center">
+                            <img src="https://p26-doubao-search-sign.byteimg.com/tos-cn-i-be4g95zd3a/1001023732881555485~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1779859506&x-signature=7SkQKgX3YhY1ttY8jrtTjDcHFD4%3D" alt="食物" class="h-8 w-8 mx-auto mb-2">
+                            <p class="text-xs text-gray-600">约 3 个西红柿</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 常见运动消耗对比 -->
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">常见运动卡路里消耗对比</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead>
+                            <tr>
+                                <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">运动类型</th>
+                                <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">强度</th>
+                                <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">60kg体重 (kcal/小时)</th>
+                                <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">70kg体重 (kcal/小时)</th>
+                                <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">80kg体重 (kcal/小时)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">跑步</td>
+                                <td class="px-6 py-4 whitespace-nowrap">8公里/小时</td>
+                                <td class="px-6 py-4 whitespace-nowrap">590-611</td>
+                                <td class="px-6 py-4 whitespace-nowrap">690-715</td>
+                                <td class="px-6 py-4 whitespace-nowrap">790-820</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">跑步</td>
+                                <td class="px-6 py-4 whitespace-nowrap">12公里/小时</td>
+                                <td class="px-6 py-4 whitespace-nowrap">925-1045</td>
+                                <td class="px-6 py-4 whitespace-nowrap">1080-1220</td>
+                                <td class="px-6 py-4 whitespace-nowrap">1235-1395</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">游泳</td>
+                                <td class="px-6 py-4 whitespace-nowrap">自由泳</td>
+                                <td class="px-6 py-4 whitespace-nowrap">500-724</td>
+                                <td class="px-6 py-4 whitespace-nowrap">585-845</td>
+                                <td class="px-6 py-4 whitespace-nowrap">670-965</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">游泳</td>
+                                <td class="px-6 py-4 whitespace-nowrap">蛙泳</td>
+                                <td class="px-6 py-4 whitespace-nowrap">400-600</td>
+                                <td class="px-6 py-4 whitespace-nowrap">470-700</td>
+                                <td class="px-6 py-4 whitespace-nowrap">540-800</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">跳绳</td>
+                                <td class="px-6 py-4 whitespace-nowrap">中速 (100-150次/分钟)</td>
+                                <td class="px-6 py-4 whitespace-nowrap">600-800</td>
+                                <td class="px-6 py-4 whitespace-nowrap">700-935</td>
+                                <td class="px-6 py-4 whitespace-nowrap">800-1070</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">快走</td>
+                                <td class="px-6 py-4 whitespace-nowrap">5公里/小时</td>
+                                <td class="px-6 py-4 whitespace-nowrap">280-350</td>
+                                <td class="px-6 py-4 whitespace-nowrap">325-408</td>
+                                <td class="px-6 py-4 whitespace-nowrap">370-465</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">瑜伽</td>
+                                <td class="px-6 py-4 whitespace-nowrap">温和流瑜伽</td>
+                                <td class="px-6 py-4 whitespace-nowrap">200-250</td>
+                                <td class="px-6 py-4 whitespace-nowrap">235-290</td>
+                                <td class="px-6 py-4 whitespace-nowrap">270-335</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">高强度间歇训练</td>
+                                <td class="px-6 py-4 whitespace-nowrap">HIIT</td>
+                                <td class="px-6 py-4 whitespace-nowrap">500-900</td>
+                                <td class="px-6 py-4 whitespace-nowrap">585-1050</td>
+                                <td class="px-6 py-4 whitespace-nowrap">670-1200</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">力量训练</td>
+                                <td class="px-6 py-4 whitespace-nowrap">中等强度</td>
+                                <td class="px-6 py-4 whitespace-nowrap">300-400</td>
+                                <td class="px-6 py-4 whitespace-nowrap">350-465</td>
+                                <td class="px-6 py-4 whitespace-nowrap">400-535</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">篮球</td>
+                                <td class="px-6 py-4 whitespace-nowrap">比赛</td>
+                                <td class="px-6 py-4 whitespace-nowrap">450-650</td>
+                                <td class="px-6 py-4 whitespace-nowrap">525-758</td>
+                                <td class="px-6 py-4 whitespace-nowrap">600-865</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 运动恢复时间区域 -->
+        <section id="recovery" class="mb-12">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800">运动恢复时间分析</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <!-- 恢复时间图表 -->
+                <div class="bg-white rounded-xl shadow-md p-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">不同运动类型恢复周期对比</h3>
+                    <img src="https://p9-flow-imagex-sign.byteimg.com/tos-cn-i-a9rns2rl98/rc/pc/super_tool/f80e70ef9daa44f785e0eda9241b2df9~tplv-a9rns2rl98-image.image?rcl=2025112813245466D8EADC6501C369575&rk3s=8e244e95&rrcfp=f06b921b&x-expires=1766899529&x-signature=3TO%2BEpbQnwt8gwsm%2BlmoJGx4nNw%3D" alt="运动恢复时间分析" class="w-full h-auto">
+                </div>
+
+                <!-- 恢复时间指南 -->
+                <div class="bg-white rounded-xl shadow-md p-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">运动恢复时间指南</h3>
+                    <div class="space-y-4">
+                        <div class="border-l-4 border-primary pl-4 py-1">
+                            <h4 class="font-medium text-gray-800">有氧运动 (如慢跑、游泳、骑自行车)</h4>
+                            <p class="text-sm text-gray-600">轻度至中度强度：通常在 24-48 小时内可以恢复。</p>
+                            <p class="text-sm text-gray-600">高强度或长时间（例如马拉松）：可能需要 3-7 天甚至更长时间来完全恢复。</p>
+                        </div>
+                        <div class="border-l-4 border-secondary pl-4 py-1">
+                            <h4 class="font-medium text-gray-800">力量训练（如举重、器械训练）</h4>
+                            <p class="text-sm text-gray-600">针对小肌肉群的训练：恢复时间一般为 24-48 小时。</p>
+                            <p class="text-sm text-gray-600">针对大肌肉群（如大腿、背部）的高强度训练：可能需要 48-72 小时来恢复。</p>
+                        </div>
+                        <div class="border-l-4 border-warning pl-4 py-1">
+                            <h4 class="font-medium text-gray-800">高强度间歇训练（HIIT）</h4>
+                            <p class="text-sm text-gray-600">由于其高强度和间歇性的特点，恢复时间通常在 24-72 小时之间。</p>
+                        </div>
+                        <div class="border-l-4 border-info pl-4 py-1">
+                            <h4 class="font-medium text-gray-800">柔韧性训练（如瑜伽、拉伸）</h4>
+                            <p class="text-sm text-gray-600">一般在训练后 12-24 小时内可以恢复，且适当的拉伸有助于缩短恢复时间。</p>
+                        </div>
+                    </div>
+                    <div class="mt-6">
+                        <h4 class="font-medium text-gray-800 mb-2">加速恢复的方法</h4>
+                        <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
+                            <li>充足的营养摄入（包括蛋白质、碳水化合物和各种微量营养素）</li>
+                            <li>良好的睡眠（7-9小时/晚）</li>
+                            <li>适当的放松和恢复性活动（如按摩、冷敷或热敷）</li>
+                            <li>补充足够的水分</li>
+                            <li>进行主动恢复（如轻度步行、瑜伽或游泳）</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 恢复时间计算器 -->
+            <div class="mt-8 bg-white rounded-xl shadow-md p-6">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">个性化恢复时间计算器</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">运动类型</label>
+                        <select id="recoveryExerciseType" class="input-field">
+                            <option value="">请选择运动类型</option>
+                            <option value="cardio">有氧运动</option>
+                            <option value="strength">力量训练</option>
+                            <option value="hiit">高强度间歇训练</option>
+                            <option value="flexibility">柔韧性训练</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">运动强度</label>
+                        <select id="exerciseIntensity" class="input-field">
+                            <option value="">请选择强度</option>
+                            <option value="low">低强度</option>
+                            <option value="moderate">中等强度</option>
+                            <option value="high">高强度</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">运动时长 (分钟)</label>
+                        <input type="number" id="recoveryExerciseDuration" class="input-field" placeholder="例如: 60">
+                    </div>
+                </div>
+                <div class="mt-6">
+                    <button id="calculateRecovery" class="btn-primary">
+                        <i class="fa fa-clock-o mr-2"></i> 计算建议恢复时间
+                    </button>
+                </div>
+
+                <!-- 恢复结果 -->
+                <div id="recoveryResult" class="mt-6 hidden">
+                    <div class="border-t border-gray-200 pt-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h4 class="font-medium text-gray-800">建议恢复时间</h4>
+                                <p id="recoveryTime" class="text-2xl font-bold text-primary">24-48 小时</p>
+                            </div>
+                            <div class="bg-blue-50 p-3 rounded-lg">
+                                <p class="text-sm text-gray-700">下次可以安排相同强度训练的时间</p>
+                                <p id="nextTrainingDate" class="text-lg font-semibold text-primary">2025年7月24日</p>
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <h4 class="font-medium text-gray-800 mb-2">恢复建议</h4>
+                            <ul id="recoverySuggestions" class="list-disc list-inside text-sm text-gray-600 space-y-1">
+                                <!-- 建议将通过JavaScript动态添加 -->
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 营养分析区域 -->
+        <section id="nutrition" class="mb-12">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800">食物营养成分分析</h2>
+            
+            <!-- 食物营养查询 -->
+            <div class="bg-white rounded-xl shadow-md p-6 mb-8">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">食物营养成分查询</h3>
+                <div class="flex flex-col md:flex-row md:items-end gap-4">
+                    <div class="flex-grow">
+                        <input type="text" id="foodSearch" class="input-field" placeholder="输入食物名称，如：苹果、米饭、鸡蛋等">
+                    </div>
+                    <div>
+                        <button id="searchFood" class="btn-primary hover:bg-blue-600 active:bg-blue-700 transition-all duration-200">
+                            <i class="fa fa-search mr-2"></i> 查询
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 食物营养结果 -->
+            <div id="foodResult" class="bg-white rounded-xl shadow-md p-6 mb-8 hidden">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 id="foodName" class="text-lg font-semibold text-gray-800">食物名称</h3>
+                    <span class="text-primary">
+                        <i class="fa fa-info-circle"></i>
+                    </span>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <img src="https://p9-flow-imagex-sign.byteimg.com/tos-cn-i-a9rns2rl98/rc/pc/super_tool/8a7d1b7fae8d4e4b83746ccb99b8097c~tplv-a9rns2rl98-image.image?rcl=2025112813245466D8EADC6501C369575&rk3s=8e244e95&rrcfp=f06b921b&x-expires=1766899530&x-signature=X7LJfzKPeESSCyIvskyvhJsbBFU%3D" alt="食物营养成分" class="w-full h-auto mb-4">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <p class="text-sm text-gray-600">份量</p>
+                                <p class="text-lg font-semibold text-gray-800">100克</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-600">总热量</p>
+                                <p id="foodCalories" class="text-lg font-semibold text-primary">0 卡路里</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 class="font-medium text-gray-800 mb-3">营养成分详情</h4>
+                        <div class="space-y-4">
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm text-gray-600">蛋白质</span>
+                                    <span id="proteinAmount" class="text-sm font-medium text-gray-800">0g</span>
+                                </div>
+                                <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                    <div id="proteinBar" class="bg-blue-500 h-full rounded-full" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm text-gray-600">脂肪</span>
+                                    <span id="fatAmount" class="text-sm font-medium text-gray-800">0g</span>
+                                </div>
+                                <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                    <div id="fatBar" class="bg-yellow-500 h-full rounded-full" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm text-gray-600">碳水化合物</span>
+                                    <span id="carbsAmount" class="text-sm font-medium text-gray-800">0g</span>
+                                </div>
+                                <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                    <div id="carbsBar" class="bg-green-500 h-full rounded-full" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm text-gray-600">膳食纤维</span>
+                                    <span id="fiberAmount" class="text-sm font-medium text-gray-800">0g</span>
+                                </div>
+                                <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                    <div id="fiberBar" class="bg-purple-500 h-full rounded-full" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-6 flex space-x-4">
+                            <button class="btn-secondary">
+                                <i class="fa fa-plus mr-2"></i> 添加到今日饮食
+                            </button>
+                            <button class="border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50 transition-all">
+                                <i class="fa fa-star-o mr-2"></i> 收藏
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 常见食物营养成分表 -->
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">常见食物营养成分表</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead>
+                            <tr>
+                                <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">食物名称</th>
+                                <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">热量 (kcal)</th>
+                                <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">蛋白质 (g)</th>
+                                <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">脂肪 (g)</th>
+                                <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">碳水化合物 (g)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">米饭</td>
+                                <td class="px-6 py-4 whitespace-nowrap">116</td>
+                                <td class="px-6 py-4 whitespace-nowrap">2.6</td>
+                                <td class="px-6 py-4 whitespace-nowrap">0.3</td>
+                                <td class="px-6 py-4 whitespace-nowrap">25.9</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">馒头</td>
+                                <td class="px-6 py-4 whitespace-nowrap">221</td>
+                                <td class="px-6 py-4 whitespace-nowrap">7</td>
+                                <td class="px-6 py-4 whitespace-nowrap">1.1</td>
+                                <td class="px-6 py-4 whitespace-nowrap">47</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">面条</td>
+                                <td class="px-6 py-4 whitespace-nowrap">284</td>
+                                <td class="px-6 py-4 whitespace-nowrap">8.3</td>
+                                <td class="px-6 py-4 whitespace-nowrap">0.7</td>
+                                <td class="px-6 py-4 whitespace-nowrap">61.9</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">猪肉（瘦）</td>
+                                <td class="px-6 py-4 whitespace-nowrap">143</td>
+                                <td class="px-6 py-4 whitespace-nowrap">20.3</td>
+                                <td class="px-6 py-4 whitespace-nowrap">6.2</td>
+                                <td class="px-6 py-4 whitespace-nowrap">1.5</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">牛肉（瘦）</td>
+                                <td class="px-6 py-4 whitespace-nowrap">106</td>
+                                <td class="px-6 py-4 whitespace-nowrap">20.2</td>
+                                <td class="px-6 py-4 whitespace-nowrap">2.3</td>
+                                <td class="px-6 py-4 whitespace-nowrap">1.2</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">鸡胸肉</td>
+                                <td class="px-6 py-4 whitespace-nowrap">133</td>
+                                <td class="px-6 py-4 whitespace-nowrap">19.4</td>
+                                <td class="px-6 py-4 whitespace-nowrap">5</td>
+                                <td class="px-6 py-4 whitespace-nowrap">2.5</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">鸡蛋</td>
+                                <td class="px-6 py-4 whitespace-nowrap">147</td>
+                                <td class="px-6 py-4 whitespace-nowrap">12.8</td>
+                                <td class="px-6 py-4 whitespace-nowrap">10.1</td>
+                                <td class="px-6 py-4 whitespace-nowrap">1.4</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">牛奶</td>
+                                <td class="px-6 py-4 whitespace-nowrap">42</td>
+                                <td class="px-6 py-4 whitespace-nowrap">3.4</td>
+                                <td class="px-6 py-4 whitespace-nowrap">1</td>
+                                <td class="px-6 py-4 whitespace-nowrap">5</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">豆腐</td>
+                                <td class="px-6 py-4 whitespace-nowrap">81</td>
+                                <td class="px-6 py-4 whitespace-nowrap">8.1</td>
+                                <td class="px-6 py-4 whitespace-nowrap">3.7</td>
+                                <td class="px-6 py-4 whitespace-nowrap">4.2</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">苹果</td>
+                                <td class="px-6 py-4 whitespace-nowrap">52</td>
+                                <td class="px-6 py-4 whitespace-nowrap">0.2</td>
+                                <td class="px-6 py-4 whitespace-nowrap">0.2</td>
+                                <td class="px-6 py-4 whitespace-nowrap">13.5</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">香蕉</td>
+                                <td class="px-6 py-4 whitespace-nowrap">91</td>
+                                <td class="px-6 py-4 whitespace-nowrap">1.4</td>
+                                <td class="px-6 py-4 whitespace-nowrap">0.2</td>
+                                <td class="px-6 py-4 whitespace-nowrap">22</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">西红柿</td>
+                                <td class="px-6 py-4 whitespace-nowrap">19</td>
+                                <td class="px-6 py-4 whitespace-nowrap">0.9</td>
+                                <td class="px-6 py-4 whitespace-nowrap">0.2</td>
+                                <td class="px-6 py-4 whitespace-nowrap">4</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">黄瓜</td>
+                                <td class="px-6 py-4 whitespace-nowrap">15</td>
+                                <td class="px-6 py-4 whitespace-nowrap">0.8</td>
+                                <td class="px-6 py-4 whitespace-nowrap">0.2</td>
+                                <td class="px-6 py-4 whitespace-nowrap">2.9</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">土豆</td>
+                                <td class="px-6 py-4 whitespace-nowrap">76</td>
+                                <td class="px-6 py-4 whitespace-nowrap">2</td>
+                                <td class="px-6 py-4 whitespace-nowrap">0.2</td>
+                                <td class="px-6 py-4 whitespace-nowrap">17.2</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 慢性病运动分析区域 -->
+        <section id="elderly" class="mb-12">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800">慢性病运动分析</h2>
+            
+            <!-- 慢性病运动指南 -->
+            <div class="bg-white rounded-xl shadow-md p-6 mb-8">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">慢性病患者运动指南</h3>
+                <p class="text-gray-600 mb-6">
+                    对于患有慢性病的中老年人，选择合适的运动方式至关重要。科学的运动可以帮助控制病情、改善生活质量，但不当的运动可能会加重病情。以下是针对常见慢性病的运动建议：
+                </p>
+                
+                <!-- 疾病选择器 -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">慢性疾病类型</label>
+                        <select id="diseaseType" class="input-field">
+                            <option value="">请选择疾病类型</option>
+                            <option value="hypertension">高血压</option>
+                            <option value="diabetes">糖尿病</option>
+                            <option value="heart">心脏病</option>
+                            <option value="hyperlipidemia">高血脂</option>
+                            <option value="osteoporosis">骨质疏松</option>
+                            <option value="arthritis">骨关节疾病</option>
+                            <option value="parkinson">帕金森病</option>
+                            <option value="all">综合建议</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">运动强度</label>
+                        <select id="elderlyExerciseIntensity" class="input-field">
+                            <option value="">请选择强度</option>
+                            <option value="low">低强度</option>
+                            <option value="moderate">中等强度</option>
+                            <option value="high">高强度</option>
+                        </select>
+                    </div>
+                    <div class="flex items-end">
+                        <button id="getExerciseAdvice" class="btn-primary w-full">
+                            <i class="fa fa-heartbeat mr-2"></i> 获取运动建议
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 运动建议结果 -->
+                <div id="exerciseAdviceResult" class="hidden">
+                    <div class="border-t border-gray-200 pt-6">
+                        <h4 id="adviceTitle" class="text-xl font-semibold text-primary mb-4">高血压患者的运动建议</h4>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <!-- 适合的运动 -->
+                            <div>
+                                <h5 class="font-medium text-gray-800 mb-3">推荐运动</h5>
+                                <ul id="recommendedExercises" class="list-disc list-inside text-sm text-gray-600 space-y-2">
+                                    <!-- 将通过JavaScript动态添加 -->
+                                </ul>
+                                
+                                <h5 class="font-medium text-gray-800 mt-6 mb-3">运动时间与频率</h5>
+                                <p id="exerciseTimeFrequency" class="text-sm text-gray-600">
+                                    <!-- 将通过JavaScript动态添加 -->
+                                </p>
+                            </div>
+                            
+                            <!-- 注意事项 -->
+                            <div>
+                                <h5 class="font-medium text-gray-800 mb-3">注意事项</h5>
+                                <ul id="precautions" class="list-disc list-inside text-sm text-gray-600 space-y-2">
+                                    <!-- 将通过JavaScript动态添加 -->
+                                </ul>
+                                
+                                <h5 class="font-medium text-gray-800 mt-6 mb-3">最佳运动时间</h5>
+                                <p id="bestExerciseTime" class="text-sm text-gray-600">
+                                    <!-- 将通过JavaScript动态添加 -->
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <!-- 运动图片展示 -->
+                        <div class="mt-8">
+                            <h5 class="font-medium text-gray-800 mb-3">运动示范</h5>
+                            <div id="exerciseImages" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <!-- 将通过JavaScript动态添加图片 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 中老年人运动注意事项 -->
+            <div class="bg-white rounded-xl shadow-md p-6 mb-8">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">中老年人运动通用注意事项</h3>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                        <img src="https://p3-doubao-search-sign.byteimg.com/tos-cn-i-be4g95zd3a/919600017648255111~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1779860871&x-signature=Exk9Qu%2F59M%2FnMo7zoDRaIy6m4Jg%3D" alt="老年人运动" class="w-full h-auto rounded-lg mb-4">
+                        
+                        <h4 class="font-medium text-gray-800 mb-2">运动前准备</h4>
+                        <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
+                            <li>运动前咨询医生，特别是有严重慢性病的患者</li>
+                            <li>进行身体活动能力评估</li>
+                            <li>选择合适的运动装备和场地</li>
+                            <li>充分热身，至少10分钟</li>
+                            <li>携带必要的药物（如硝酸甘油、降压药等）</li>
+                        </ul>
+                    </div>
+                    
+                    <div>
+                        <img src="https://p3-doubao-search-sign.byteimg.com/tos-cn-i-be4g95zd3a/1011983235291807783~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1779860870&x-signature=lqfFVUz9RFFRR8hP3cgzdKxqFHY%3D" alt="老年人伸展运动" class="w-full h-auto rounded-lg mb-4">
+                        
+                        <h4 class="font-medium text-gray-800 mb-2">运动中注意</h4>
+                        <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
+                            <li>控制运动强度，以"身体微汗"为宜</li>
+                            <li>避免憋气发力，保持自然呼吸</li>
+                            <li>注意身体信号，如出现不适立即停止</li>
+                            <li>及时补充水分，但不要一次大量饮水</li>
+                            <li>随身携带手机，以备紧急情况</li>
+                        </ul>
+                        
+                        <h4 class="font-medium text-gray-800 mt-4 mb-2">运动后恢复</h4>
+                        <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
+                            <li>进行5-10分钟的整理活动</li>
+                            <li>不要立即坐下或躺下</li>
+                            <li>及时更换汗湿的衣物</li>
+                            <li>记录运动感受，调整下次运动计划</li>
+                            <li>保证充足的睡眠和营养</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 不适宜的运动 -->
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">中老年人应避免的运动</h3>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-red-50 p-4 rounded-lg">
+                        <h4 class="font-medium text-red-700 mb-2">高强度广场舞</h4>
+                        <p class="text-sm text-gray-600">
+                            很多广场舞动作需要频繁屈膝、旋转甚至跳跃，容易导致膝关节压力过大，引发疼痛甚至损伤。建议选择动作简单、幅度小的舞蹈。
+                        </p>
+                    </div>
+                    
+                    <div class="bg-red-50 p-4 rounded-lg">
+                        <h4 class="font-medium text-red-700 mb-2">爬山/爬楼梯</h4>
+                        <p class="text-sm text-gray-600">
+                            爬山、爬楼梯这类运动对膝关节压力大，中老年人肌肉力量、平衡性下降，很难维持膝关节的稳定性，容易造成膝关节损伤。
+                        </p>
+                    </div>
+                    
+                    <div class="bg-red-50 p-4 rounded-lg">
+                        <h4 class="font-medium text-red-700 mb-2">爆发性/对抗性运动</h4>
+                        <p class="text-sm text-gray-600">
+                            如羽毛球、篮球等，需要快速启动、急停、转身，对身体协调性和肌肉力量要求很高，容易造成跟腱断裂、脚踝扭伤等意外。
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="mt-6">
+                    <h4 class="font-medium text-gray-800 mb-3">推荐的"适老运动"</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                        <div class="bg-blue-50 p-3 rounded-lg text-center">
+                            <img src="https://p3-doubao-search-sign.byteimg.com/tos-cn-i-be4g95zd3a/1011983235291807783~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1779860870&x-signature=lqfFVUz9RFFRR8hP3cgzdKxqFHY%3D" alt="散步" class="h-16 w-16 mx-auto mb-2 object-cover rounded-full">
+                            <p class="text-sm text-gray-700">散步/健步走</p>
+                        </div>
+                        
+                        <div class="bg-blue-50 p-3 rounded-lg text-center">
+                            <img src="https://p3-doubao-search-sign.byteimg.com/tos-cn-i-be4g95zd3a/918879468164874393~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1779860870&x-signature=dIjc4VK3FOcCadtopyQDK1tROVY%3D" alt="游泳" class="h-16 w-16 mx-auto mb-2 object-cover rounded-full">
+                            <p class="text-sm text-gray-700">游泳</p>
+                        </div>
+                        
+                        <div class="bg-blue-50 p-3 rounded-lg text-center">
+                            <img src="https://p3-doubao-search-sign.byteimg.com/tos-cn-i-be4g95zd3a/1053729793425145901~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1779860870&x-signature=3Wv2UeAMMRftHHg8OrFCukIDEPY%3D" alt="瑜伽" class="h-16 w-16 mx-auto mb-2 object-cover rounded-full">
+                            <p class="text-sm text-gray-700">瑜伽</p>
+                        </div>
+                        
+                        <div class="bg-blue-50 p-3 rounded-lg text-center">
+                            <img src="https://p3-doubao-search-sign.byteimg.com/tos-cn-i-be4g95zd3a/919600017648255111~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1779860871&x-signature=Exk9Qu%2F59M%2FnMo7zoDRaIy6m4Jg%3D" alt="太极" class="h-16 w-16 mx-auto mb-2 object-cover rounded-full">
+                            <p class="text-sm text-gray-700">太极</p>
+                        </div>
+                        
+                        <div class="bg-blue-50 p-3 rounded-lg text-center">
+                            <img src="https://p3-doubao-search-sign.byteimg.com/tos-cn-i-6w9my0ksvp/586a4d43b1ea4f2fa0ad1b5f9c8d44dd~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1779860870&x-signature=xACddwOykh15Ar7pCSg9cYEVwdM%3D" alt="轻度力量训练" class="h-16 w-16 mx-auto mb-2 object-cover rounded-full">
+                            <p class="text-sm text-gray-700">轻度力量训练</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 了解更多模态框 -->
+    <div id="learnMoreModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-2xl mx-4 transform transition-all">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-gray-800">了解健身分析</h3>
+                <button id="closeLearnMoreModal" class="text-gray-500 hover:text-gray-700 focus:outline-none">
+                    <i class="fa fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="space-y-6">
+                <div>
+                    <h4 class="text-lg font-semibold text-primary mb-2">科学健身，从能量平衡开始</h4>
+                    <p class="text-gray-600">
+                        健身分析是一个全面的健康管理工具，帮助您追踪运动消耗与营养摄入，优化健身计划，实现健康生活目标。通过科学的数据追踪和分析，让您的健身之旅更加高效和精准。
+                    </p>
+                </div>
+                <div>
+                    <h4 class="text-lg font-semibold text-primary mb-2">核心功能</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <h5 class="font-medium text-gray-800 mb-1">运动能量消耗分析</h5>
+                            <p class="text-sm text-gray-600">计算不同运动类型和强度下的卡路里消耗，帮助您合理安排运动计划。</p>
+                        </div>
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <h5 class="font-medium text-gray-800 mb-1">运动恢复时间分析</h5>
+                            <p class="text-sm text-gray-600">根据运动类型、强度和时长，计算最佳恢复时间，避免过度训练。</p>
+                        </div>
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <h5 class="font-medium text-gray-800 mb-1">食物营养成分分析</h5>
+                            <p class="text-sm text-gray-600">查询各种食物的营养成分，了解您的饮食摄入，保持营养平衡。</p>
+                        </div>
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <h5 class="font-medium text-gray-800 mb-1">慢性病运动推荐</h5>
+                            <p class="text-sm text-gray-600">为慢性病患者提供个性化运动建议，安全有效地进行身体活动。</p>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <h4 class="text-lg font-semibold text-primary mb-2">如何使用</h4>
+                    <ol class="list-decimal list-inside text-gray-600 space-y-2">
+                        <li>在运动分析区域，选择运动类型、时长和体重，计算卡路里消耗。</li>
+                        <li>使用恢复时间计算器，了解适合您的休息时间。</li>
+                        <li>在营养分析区域，搜索食物营养成分，添加到今日饮食记录。</li>
+                        <li>查看仪表盘，了解您的能量平衡状况。</li>
+                        <li>如有慢性疾病，可在慢性病运动分析区域获取个性化建议。</li>
+                    </ol>
+                </div>
+            </div>
+            <div class="mt-8 flex justify-end">
+                <button id="closeLearnMoreBtn" class="btn-primary">
+                    <i class="fa fa-check mr-2"></i> 我知道了
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加食物模态框 -->
+    <div id="addFoodModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4 transform transition-all">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-gray-800">添加今日饮食</h3>
+                <button id="closeModal" class="text-gray-500 hover:text-gray-700 focus:outline-none">
+                    <i class="fa fa-times text-xl"></i>
+                </button>
+            </div>
+            <form id="addFoodForm">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">食物名称</label>
+                    <input type="text" id="foodNameInput" class="input-field" placeholder="输入食物名称">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">份量 (克)</label>
+                    <input type="number" id="foodAmountInput" class="input-field" placeholder="例如: 100" min="1">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">餐次</label>
+                    <select id="mealTypeInput" class="input-field">
+                        <option value="breakfast">早餐</option>
+                        <option value="lunch">午餐</option>
+                        <option value="dinner">晚餐</option>
+                        <option value="snack">加餐</option>
+                    </select>
+                </div>
+                <div class="flex space-x-4 mt-6">
+                    <button type="button" id="cancelAddFood" class="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50 transition-all">
+                        取消
+                    </button>
+                    <button type="submit" class="flex-1 btn-primary">
+                        <i class="fa fa-check mr-2"></i> 确认添加
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 底部区域 -->
+    <footer class="bg-gray-800 text-white py-12">
+        <div class="container mx-auto px-4">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">健身分析</h3>
+                    <p class="text-gray-400 text-sm">
+                        科学健身，从能量平衡开始。精准追踪你的运动消耗与营养摄入，优化你的健身计划，实现健康生活目标。
+                    </p>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">功能</h3>
+                    <ul class="space-y-2 text-gray-400 text-sm">
+                        <li><a href="#dashboard" class="hover:text-white transition-colors">能量平衡仪表盘</a></li>
+                        <li><a href="#exercise" class="hover:text-white transition-colors">运动能量消耗分析</a></li>
+                        <li><a href="#recovery" class="hover:text-white transition-colors">运动恢复时间分析</a></li>
+                        <li><a href="#nutrition" class="hover:text-white transition-colors">食物营养成分分析</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">资源</h3>
+                    <ul class="space-y-2 text-gray-400 text-sm">
+                        <li><a href="#" class="hover:text-white transition-colors">健身知识库</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">营养指南</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">运动计划模板</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">常见问题</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">联系我们</h3>
+                    <ul class="space-y-2 text-gray-400 text-sm">
+                        <li class="flex items-center">
+                            <i class="fa fa-envelope-o mr-2"></i>
+                            <a href="mailto:info@fitnessanalyzer.com" class="hover:text-white transition-colors">info@fitnessanalyzer.com</a>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fa fa-phone mr-2"></i>
+                            <a href="tel:+86123456789" class="hover:text-white transition-colors">+86 123 456 789</a>
+                        </li>
+                    </ul>
+                    <div class="mt-4 flex space-x-4">
+                        <a href="#" class="text-gray-400 hover:text-white transition-colors">
+                            <i class="fa fa-weixin text-xl"></i>
+                        </a>
+                        <a href="#" class="text-gray-400 hover:text-white transition-colors">
+                            <i class="fa fa-weibo text-xl"></i>
+                        </a>
+                        <a href="#" class="text-gray-400 hover:text-white transition-colors">
+                            <i class="fa fa-instagram text-xl"></i>
+                        </a>
+                        <a href="#" class="text-gray-400 hover:text-white transition-colors">
+                            <i class="fa fa-youtube-play text-xl"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="border-t border-gray-700 mt-8 pt-8 text-center text-gray-400 text-sm">
+                <p>&copy; 2025 健身分析. 保留所有权利.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+        // 食物营养数据库
+        const foodDatabase = {
+            "苹果": { calories: 52, protein: 0.2, fat: 0.2, carbs: 13.5, fiber: 2.4 },
+            "香蕉": { calories: 91, protein: 1.4, fat: 0.2, carbs: 22, fiber: 2.6 },
+            "米饭": { calories: 116, protein: 2.6, fat: 0.3, carbs: 25.9, fiber: 0.4 },
+            "馒头": { calories: 221, protein: 7, fat: 1.1, carbs: 47, fiber: 1.5 },
+            "面条": { calories: 284, protein: 8.3, fat: 0.7, carbs: 61.9, fiber: 2.7 },
+            "鸡蛋": { calories: 147, protein: 12.8, fat: 10.1, carbs: 1.4, fiber: 0 },
+            "牛奶": { calories: 42, protein: 3.4, fat: 1, carbs: 5, fiber: 0 },
+            "鸡胸肉": { calories: 133, protein: 19.4, fat: 5, carbs: 2.5, fiber: 0 },
+            "牛肉": { calories: 106, protein: 20.2, fat: 2.3, carbs: 1.2, fiber: 0 },
+            "猪肉": { calories: 143, protein: 20.3, fat: 6.2, carbs: 1.5, fiber: 0 },
+            "西红柿": { calories: 19, protein: 0.9, fat: 0.2, carbs: 4, fiber: 1.2 },
+            "黄瓜": { calories: 15, protein: 0.8, fat: 0.2, carbs: 2.9, fiber: 0.5 },
+            "土豆": { calories: 76, protein: 2, fat: 0.2, carbs: 17.2, fiber: 2.2 },
+            "豆腐": { calories: 81, protein: 8.1, fat: 3.7, carbs: 4.2, fiber: 0.3 },
+            "酸奶": { calories: 72, protein: 2.5, fat: 2.7, carbs: 9.3, fiber: 0 },
+            "面包": { calories: 312, protein: 8.3, fat: 5.1, carbs: 58.6, fiber: 2.2 },
+            "油条": { calories: 386, protein: 6.9, fat: 17.6, carbs: 51, fiber: 0.9 },
+            "粥": { calories: 46, protein: 1.1, fat: 0.3, carbs: 9.9, fiber: 0.1 },
+            "奶酪": { calories: 328, protein: 25.7, fat: 23.5, carbs: 3.5, fiber: 0 },
+            "豆浆": { calories: 14, protein: 1.8, fat: 0.7, carbs: 1.1, fiber: 0.1 },
+            "白菜": { calories: 17, protein: 1.5, fat: 0.1, carbs: 3.2, fiber: 0.8 },
+            "生菜": { calories: 15, protein: 1.4, fat: 0.4, carbs: 2.1, fiber: 1.3 },
+            "蘑菇": { calories: 20, protein: 2.7, fat: 0.1, carbs: 4.1, fiber: 1 },
+            "胡萝卜": { calories: 40, protein: 1.2, fat: 0.2, carbs: 9.5, fiber: 2.8 },
+            "茄子": { calories: 21, protein: 1.1, fat: 0.2, carbs: 4.9, fiber: 3.1 },
+            "西瓜": { calories: 25, protein: 0.6, fat: 0.1, carbs: 5.8, fiber: 0.4 },
+            "橘子": { calories: 51, protein: 0.7, fat: 0.2, carbs: 11.9, fiber: 2.4 },
+            "梨": { calories: 44, protein: 0.4, fat: 0.2, carbs: 13.3, fiber: 3.1 },
+            "葡萄": { calories: 43, protein: 0.5, fat: 0.2, carbs: 10.3, fiber: 0.9 },
+            "猕猴桃": { calories: 56, protein: 0.8, fat: 0.6, carbs: 14.5, fiber: 2.1 },
+            "杏": { calories: 36, protein: 0.9, fat: 0.1, carbs: 9.1, fiber: 1.7 }
+        };
+
+        // 运动消耗数据库 (每小时消耗卡路里/公斤体重)
+        const exerciseDatabase = {
+            "running": {
+                "name": "跑步",
+                "low": 8.0,    // 低强度 (约6公里/小时)
+                "moderate": 10.0, // 中等强度 (约8公里/小时)
+                "high": 16.0     // 高强度 (约12公里/小时)
+            },
+            "walking": {
+                "name": "快走",
+                "low": 4.0,    // 低强度 (约4公里/小时)
+                "moderate": 5.0, // 中等强度 (约5公里/小时)
+                "high": 6.5     // 高强度 (约6公里/小时)
+            },
+            "swimming": {
+                "name": "游泳",
+                "low": 6.0,    // 低强度 (慢泳)
+                "moderate": 8.0, // 中等强度 (蛙泳)
+                "high": 12.0     // 高强度 (自由泳/蝶泳)
+            },
+            "cycling": {
+                "name": "骑行",
+                "low": 4.0,    // 低强度 (慢骑)
+                "moderate": 7.0, // 中等强度 (中速骑行)
+                "high": 10.0     // 高强度 (快速骑行)
+            },
+            "basketball": {
+                "name": "篮球",
+                "low": 5.0,    // 低强度 (投篮练习)
+                "moderate": 7.0, // 中等强度 (非竞争性比赛)
+                "high": 9.0      // 高强度 (竞争性比赛)
+            },
+            "tennis": {
+                "name": "网球",
+                "low": 5.0,    // 低强度 (练习)
+                "moderate": 7.0, // 中等强度 (双打)
+                "high": 9.0      // 高强度 (单打)
+            },
+            "yoga": {
+                "name": "瑜伽",
+                "low": 2.5,    // 低强度 ( restorative yoga)
+                "moderate": 3.5, // 中等强度 (hatha yoga)
+                "high": 4.0      // 高强度 (vinyasa flow)
+            },
+            "hiit": {
+                "name": "高强度间歇训练",
+                "low": 8.0,    // 低强度 (低冲击HIIT)
+                "moderate": 12.0, // 中等强度 (中等冲击HIIT)
+                "high": 15.0     // 高强度 (高冲击HIIT)
+            },
+            "weightlifting": {
+                "name": "力量训练",
+                "low": 3.5,    // 低强度 (轻重量，高重复)
+                "moderate": 5.0, // 中等强度 (中等重量)
+                "high": 7.0      // 高强度 (大重量，低重复)
+            },
+            "jumping": {
+                "name": "跳绳",
+                "low": 8.0,    // 低强度 (慢跳)
+                "moderate": 10.0, // 中等强度 (中速跳)
+                "high": 14.0     // 高强度 (快速跳)
+            }
+        };
+
+        // 恢复时间数据库 (小时)
+        const recoveryDatabase = {
+            "cardio": {
+                "low": { min: 12, max: 24 },
+                "moderate": { min: 24, max: 48 },
+                "high": { min: 48, max: 72 }
+            },
+            "strength": {
+                "low": { min: 24, max: 48 },
+                "moderate": { min: 48, max: 72 },
+                "high": { min: 72, max: 96 }
+            },
+            "hiit": {
+                "low": { min: 24, max: 48 },
+                "moderate": { min: 48, max: 72 },
+                "high": { min: 72, max: 96 }
+            },
+            "flexibility": {
+                "low": { min: 6, max: 12 },
+                "moderate": { min: 12, max: 24 },
+                "high": { min: 24, max: 36 }
+            }
+        };
+
+        // 恢复建议数据库
+        const recoverySuggestions = {
+            "cardio": {
+                "low": [
+                    "进行轻度拉伸以缓解肌肉紧张",
+                    "保持充足的水分摄入",
+                    "可以进行轻度的主动恢复活动，如慢走"
+                ],
+                "moderate": [
+                    "进行针对性的拉伸以缓解肌肉紧张",
+                    "确保摄入足够的水分和电解质",
+                    "考虑进行轻度的主动恢复活动，如游泳或瑜伽",
+                    "保证良好的睡眠质量"
+                ],
+                "high": [
+                    "进行全面的拉伸以缓解肌肉紧张",
+                    "考虑使用泡沫轴进行自我按摩",
+                    "确保摄入足够的水分、电解质和碳水化合物",
+                    "进行轻度的主动恢复活动，如游泳或瑜伽",
+                    "保证7-9小时的高质量睡眠",
+                    "考虑进行冷敷以减轻肌肉酸痛"
+                ]
+            },
+            "strength": {
+                "low": [
+                    "进行针对性的拉伸以缓解肌肉紧张",
+                    "确保摄入足够的蛋白质以支持肌肉修复",
+                    "保持充足的水分摄入"
+                ],
+                "moderate": [
+                    "进行全面的拉伸以缓解肌肉紧张",
+                    "考虑使用泡沫轴进行自我按摩",
+                    "确保摄入足够的蛋白质(1.6-2.2g/kg体重)以支持肌肉修复",
+                    "摄入适量的碳水化合物以补充糖原",
+                    "保证7-9小时的高质量睡眠"
+                ],
+                "high": [
+                    "进行全面的拉伸以缓解肌肉紧张",
+                    "使用泡沫轴或考虑专业按摩以缓解肌肉紧张",
+                    "确保摄入足够的蛋白质(1.6-2.2g/kg体重)以支持肌肉修复",
+                    "摄入适量的碳水化合物以补充糖原",
+                    "保证8-9小时的高质量睡眠",
+                    "考虑进行冷敷以减轻肌肉酸痛和炎症",
+                    "可以考虑补充肌酸或BCAA等辅助恢复的补剂"
+                ]
+            },
+            "hiit": {
+                "low": [
+                    "进行轻度拉伸以缓解肌肉紧张",
+                    "确保摄入足够的水分和电解质",
+                    "进行轻度的主动恢复活动，如慢走"
+                ],
+                "moderate": [
+                    "进行全面的拉伸以缓解肌肉紧张",
+                    "考虑使用泡沫轴进行自我按摩",
+                    "确保摄入足够的水分、电解质和碳水化合物",
+                    "进行轻度的主动恢复活动，如游泳或瑜伽",
+                    "保证7-9小时的高质量睡眠"
+                ],
+                "high": [
+                    "进行全面的拉伸以缓解肌肉紧张",
+                    "使用泡沫轴或考虑专业按摩以缓解肌肉紧张",
+                    "确保摄入足够的水分、电解质和碳水化合物",
+                    "进行轻度的主动恢复活动，如游泳或瑜伽",
+                    "保证8-9小时的高质量睡眠",
+                    "考虑进行冷敷以减轻肌肉酸痛和炎症",
+                    "可以考虑补充镁或锌等辅助恢复的矿物质"
+                ]
+            },
+            "flexibility": {
+                "low": [
+                    "保持轻度活动以避免肌肉僵硬",
+                    "保持充足的水分摄入"
+                ],
+                "moderate": [
+                    "进行轻度的后续拉伸以维持柔韧性",
+                    "保持充足的水分摄入",
+                    "考虑使用泡沫轴进行自我按摩"
+                ],
+                "high": [
+                    "进行轻度的后续拉伸以维持柔韧性",
+                    "保持充足的水分摄入",
+                    "考虑使用泡沫轴进行自我按摩",
+                    "保证良好的睡眠质量",
+                    "可以考虑进行轻度的热疗以缓解肌肉紧张"
+                ]
+            }
+        };
+
+        // 慢性病运动数据库
+        const chronicDiseaseExerciseDatabase = {
+            "hypertension": {
+                "name": "高血压",
+                "recommendedExercises": {
+                    "low": [
+                        "散步：每天30-45分钟，保持轻松步伐",
+                        "太极拳：每周3-5次，每次20-30分钟",
+                        "八段锦：温和的中国传统健身功法",
+                        "游泳：慢泳，每周2-3次，每次20-30分钟"
+                    ],
+                    "moderate": [
+                        "快走：每分钟100-120步，每天累计30-40分钟",
+                        "骑自行车：中等强度，每周3-4次，每次30分钟",
+                        "瑜伽：选择适合高血压患者的温和体式",
+                        "低强度有氧健身操：每周3-4次，每次20-30分钟"
+                    ],
+                    "high": [
+                        "注意：高血压患者一般不建议高强度运动",
+                        "如果血压控制良好，可在医生指导下尝试：",
+                        "中速游泳：每周2-3次，每次30分钟",
+                        "中高强度骑自行车：每周2-3次，每次20-30分钟"
+                    ]
+                },
+                "exerciseTimeFrequency": {
+                    "low": "每周5-6天，每天30-45分钟，可分2-3次进行",
+                    "moderate": "每周4-5天，每天30-40分钟，可分2次进行",
+                    "high": "仅在血压控制良好且医生允许的情况下，每周2-3次，每次20-30分钟"
+                },
+                "precautions": {
+                    "low": [
+                        "运动前后测量血压，确保血压在安全范围内",
+                        "避免憋气动作，如举重、拔河等",
+                        "避免头低于心脏的动作",
+                        "运动中如出现头晕、头痛、胸痛等不适，应立即停止",
+                        "随身携带降压药物"
+                    ],
+                    "moderate": [
+                        "运动前后必须测量血压，确保血压稳定",
+                        "避免高强度、憋气类运动",
+                        "运动强度以不引起不适为宜",
+                        "运动中保持呼吸顺畅，不要憋气",
+                        "随身携带硝酸甘油等急救药物",
+                        "避免在极端温度环境下运动"
+                    ],
+                    "high": [
+                        "必须在医生指导下进行，并有人陪同",
+                        "运动前血压应控制在160/100mmHg以下",
+                        "运动中每10-15分钟测量一次血压",
+                        "如血压超过180/110mmHg，应立即停止运动",
+                        "随身携带急救药物和手机",
+                        "避免单独运动，确保有人能及时提供帮助"
+                    ]
+                },
+                "bestExerciseTime": "下午16:00-17:00血压相对稳定，是更适合的运动时段。避免早晨6:00-8:00血压高峰期运动，因为此时运动可能增加心脏负荷，导致血压升高。"
+            },
+            "diabetes": {
+                "name": "糖尿病",
+                "recommendedExercises": {
+                    "low": [
+                        "散步：每天30-45分钟，保持轻松步伐",
+                        "太极拳：每周3-5次，每次20-30分钟",
+                        "水中漫步：在齐腰深的水中行走，减轻关节压力",
+                        "低强度伸展运动：每天10-15分钟"
+                    ],
+                    "moderate": [
+                        "快走：每分钟120-140步，每天累计30-40分钟",
+                        "骑自行车：中等强度，每周3-4次，每次30-45分钟",
+                        "游泳：每周3-4次，每次20-30分钟",
+                        "有氧健身操：每周3-4次，每次20-30分钟"
+                    ],
+                    "high": [
+                        "慢跑：每周2-3次，每次20-30分钟",
+                        "高强度间歇训练：在医生指导下进行，每周2次",
+                        "中高强度骑自行车：每周2-3次，每次30分钟",
+                        "爬楼梯：每周2-3次，每次10-15分钟（注意膝关节保护）"
+                    ]
+                },
+                "exerciseTimeFrequency": {
+                    "low": "每天进行，每次30-45分钟，可分多次进行",
+                    "moderate": "每周4-5天，每天30-45分钟，餐后1-2小时是最佳运动时间",
+                    "high": "每周3-4天，每次20-30分钟，避免连续两天进行高强度运动"
+                },
+                "precautions": {
+                    "low": [
+                        "运动前后监测血糖，避免低血糖",
+                        "随身携带糖果或饼干，以防低血糖",
+                        "穿着舒适的鞋袜，避免足部受伤",
+                        "保持充分水分摄入",
+                        "避免空腹运动"
+                    ],
+                    "moderate": [
+                        "运动前后及运动中监测血糖",
+                        "随身携带快速升糖食物（如糖果、果汁）",
+                        "避免在胰岛素作用高峰期运动",
+                        "运动中注意足部保护，穿着合适的运动鞋",
+                        "运动后检查足部有无损伤"
+                    ],
+                    "high": [
+                        "运动前血糖应在5.6-13.9mmol/L之间",
+                        "避免在血糖过高（>16.7mmol/L）或过低（<5.6mmol/L）时运动",
+                        "运动中每30分钟监测一次血糖",
+                        "随身携带糖尿病急救卡和糖果",
+                        "避免单独进行高强度运动",
+                        "运动后及时补充水分和适当碳水化合物"
+                    ]
+                },
+                "bestExerciseTime": "餐后1-2小时是糖尿病患者的最佳运动时间，此时血糖较高，运动有助于降低餐后血糖。研究表明，下午或晚上运动比上午运动的降糖效果更佳。避免早晨空腹运动，以防低血糖。"
+            },
+            "heart": {
+                "name": "心脏病",
+                "recommendedExercises": {
+                    "low": [
+                        "散步：每天20-30分钟，保持轻松步伐",
+                        "太极拳：每周3-4次，每次15-20分钟",
+                        "温和的伸展运动：每天10-15分钟",
+                        "低强度水中运动：每周2-3次，每次15-20分钟"
+                    ],
+                    "moderate": [
+                        "快走：每分钟100-120步，每周4-5次，每次20-30分钟",
+                        "骑自行车：低至中等强度，每周3-4次，每次20-30分钟",
+                        "游泳：慢泳，每周2-3次，每次20分钟",
+                        "低强度有氧健身操：每周3次，每次15-20分钟"
+                    ],
+                    "high": [
+                        "注意：心脏病患者应谨慎进行高强度运动",
+                        "在医生指导下可尝试：",
+                        "中速步行：每周2-3次，每次20分钟",
+                        "中等强度骑自行车：每周2次，每次15-20分钟"
+                    ]
+                },
+                "exerciseTimeFrequency": {
+                    "low": "每天进行，每次15-30分钟，可分多次进行",
+                    "moderate": "每周3-4天，每天20-30分钟，避免连续两天进行",
+                    "high": "仅在医生指导下进行，每周1-2次，每次15-20分钟"
+                },
+                "precautions": {
+                    "low": [
+                        "运动前进行5-10分钟热身",
+                        "运动后进行5分钟整理活动",
+                        "避免在极端温度环境下运动",
+                        "随身携带硝酸甘油等急救药物",
+                        "运动中如出现胸闷、气短、头晕等不适，应立即停止"
+                    ],
+                    "moderate": [
+                        "运动前必须充分热身5-10分钟",
+                        "运动强度以不引起不适为宜",
+                        "避免高强度、憋气类运动",
+                        "随身携带急救药物和手机",
+                        "避免单独运动，确保有人能及时提供帮助",
+                        "运动后不要立即停止，应逐渐降低强度"
+                    ],
+                    "high": [
+                        "必须在医生指导下进行，并有人陪同",
+                        "运动前进行全面身体检查",
+                        "运动中每10分钟监测一次心率",
+                        "心率不应超过最大心率（220-年龄）的70%",
+                        "随身携带急救药物、手机和心脏病急救卡",
+                        "运动场地应靠近医疗设施"
+                    ]
+                },
+                "bestExerciseTime": "避免早晨6:00-9:00心脏病发作的'早高峰'时段运动，因为早晨人体相对缺水，血液黏稠度增高，易形成血栓，同时上午血压达到峰值，容易引发急性心脑血管事件。建议在下午或傍晚进行运动，此时心血管系统相对稳定。"
+            },
+            "hyperlipidemia": {
+                "name": "高血脂",
+                "recommendedExercises": {
+                    "low": [
+                        "散步：每天30-45分钟，保持轻松步伐",
+                        "太极拳：每周3-5次，每次20-30分钟",
+                        "低强度伸展运动：每天10-15分钟",
+                        "骑自行车：低强度，每周3-4次，每次20-30分钟"
+                    ],
+                    "moderate": [
+                        "快走：每分钟120-140步，每天累计30-40分钟",
+                        "游泳：每周3-4次，每次20-30分钟",
+                        "有氧健身操：每周3-4次，每次20-30分钟",
+                        "中强度骑自行车：每周3-4次，每次30分钟"
+                    ],
+                    "high": [
+                        "慢跑：每周3-4次，每次20-30分钟",
+                        "高强度间歇训练：每周2-3次，每次15-20分钟",
+                        "中高强度游泳：每周2-3次，每次20-30分钟",
+                        "爬楼梯：每周2-3次，每次10-15分钟"
+                    ]
+                },
+                "exerciseTimeFrequency": {
+                    "low": "每天进行，每次30-45分钟，可分多次进行",
+                    "moderate": "每周4-5天，每天30-45分钟，运动时间最好超过30分钟",
+                    "high": "每周3-4天，每次20-30分钟，避免连续两天进行高强度运动"
+                },
+                "precautions": {
+                    "low": [
+                        "运动前后充分热身和放松",
+                        "保持充分水分摄入",
+                        "运动后补充矿物质，避免腿脚抽筋",
+                        "避免在极端温度环境下运动"
+                    ],
+                    "moderate": [
+                        "运动前充分热身5-10分钟",
+                        "运动中保持适当水分摄入",
+                        "避免突然高强度运动",
+                        "运动后进行5-10分钟放松活动",
+                        "运动后补充碱性饮料，有助于缓解疲劳"
+                    ],
+                    "high": [
+                        "运动前必须充分热身10分钟",
+                        "逐渐增加运动强度，避免突然高强度运动",
+                        "运动中注意心率变化，保持在最大心率的60%-80%",
+                        "运动后进行充分放松",
+                        "补充足够水分和电解质",
+                        "如有不适，立即停止运动"
+                    ]
+                },
+                "bestExerciseTime": "高血脂患者的运动时间相对灵活，但建议在下午或傍晚进行，此时身体机能较为稳定。运动时间最好超过30分钟，如果一次性进行30分钟很困难，可分为3次，每次10分钟；如果觉得30分钟进行同一项目很枯燥，难以坚持，可以交替运动方式。"
+            },
+            "osteoporosis": {
+                "name": "骨质疏松",
+                "recommendedExercises": {
+                    "low": [
+                        "散步：每天30-45分钟，保持轻松步伐",
+                        "太极拳：每周3-5次，每次20-30分钟",
+                        "低强度水中运动：每周2-3次，每次20-30分钟",
+                        "温和的伸展运动：每天10-15分钟"
+                    ],
+                    "moderate": [
+                        "快走：每分钟100-120步，每周4-5次，每次20-30分钟",
+                        "爬楼梯：每周2-3次，每次10-15分钟（注意安全）",
+                        "低强度力量训练：使用轻重量，每周2-3次，每次15-20分钟",
+                        "平衡训练：每周3-4次，每次10-15分钟"
+                    ],
+                    "high": [
+                        "注意：骨质疏松患者应避免高强度、高冲击性运动",
+                        "在医生指导下可尝试：",
+                        "中强度力量训练：使用轻重量，高重复次数",
+                        "中强度有氧运动：每周2-3次，每次20分钟"
+                    ]
+                },
+                "exerciseTimeFrequency": {
+                    "low": "每天进行，每次30-45分钟，可分多次进行",
+                    "moderate": "每周4-5天，每天20-30分钟，力量训练每周2-3次即可",
+                    "high": "仅在医生指导下进行，每周2-3次，每次15-20分钟"
+                },
+                "precautions": {
+                    "low": [
+                        "避免跌倒，选择安全的运动场地",
+                        "避免弯腰、扭腰、跳跃等动作",
+                        "避免提重物或搬运重物",
+                        "保持良好姿势，避免脊柱弯曲"
+                    ],
+                    "moderate": [
+                        "避免高冲击性运动，如跑步、跳跃",
+                        "避免向前弯曲、过度转腰的动作",
+                        "力量训练时避免憋气",
+                        "确保运动环境安全，避免跌倒",
+                        "运动时佩戴适当的护具，如护腰"
+                    ],
+                    "high": [
+                        "必须在医生指导下进行，并有人陪同",
+                        "避免任何可能导致跌倒的运动",
+                        "避免高冲击性、扭转性动作",
+                        "力量训练时使用轻重量，高重复次数",
+                        "确保运动环境安全，地面平整",
+                        "随身携带手机，以备紧急情况"
+                    ]
+                },
+                "bestExerciseTime": "骨质疏松患者的运动时间相对灵活，但建议在白天光线充足、温度适宜的时段进行，避免在早晚光线不足或温度过低时运动，以减少跌倒风险。运动前应进行身体运动能力评定，并遵医嘱选择适合的运动方式和强度。"
+            },
+            "arthritis": {
+                "name": "骨关节疾病",
+                "recommendedExercises": {
+                    "low": [
+                        "水中运动：如水中漫步、游泳，每周3-4次，每次20-30分钟",
+                        "太极拳：每周3-5次，每次15-20分钟",
+                        "温和的伸展运动：每天10-15分钟",
+                        "低强度骑自行车：每周3-4次，每次15-20分钟"
+                    ],
+                    "moderate": [
+                        "快走：每分钟80-100步，每周4-5次，每次15-20分钟",
+                        "低强度力量训练：使用轻重量，每周2-3次，每次15-20分钟",
+                        "平衡训练：每周3-4次，每次10-15分钟",
+                        "水中有氧运动：每周2-3次，每次20分钟"
+                    ],
+                    "high": [
+                        "注意：骨关节疾病患者应避免高强度、高冲击性运动",
+                        "在医生指导下可尝试：",
+                        "中强度水中运动：每周2-3次，每次15-20分钟",
+                        "中强度骑自行车：每周2次，每次15-20分钟"
+                    ]
+                },
+                "exerciseTimeFrequency": {
+                    "low": "每天进行，每次15-30分钟，可分多次进行",
+                    "moderate": "每周3-4天，每天15-20分钟，避免连续两天进行相同关节的运动",
+                    "high": "仅在医生指导下进行，每周1-2次，每次15-20分钟"
+                },
+                "precautions": {
+                    "low": [
+                        "避免关节过度负重的运动",
+                        "避免关节过度弯曲或伸展的动作",
+                        "运动时保持适当休息，避免过度疲劳",
+                        "运动后可进行冷敷，减轻关节炎症"
+                    ],
+                    "moderate": [
+                        "避免高冲击性运动，如跑步、跳跃",
+                        "避免爬楼梯、爬山等对膝关节压力大的运动",
+                        "运动前充分热身，运动后充分放松",
+                        "如关节疼痛加重，应减少运动强度或停止运动",
+                        "可考虑使用辅助工具，如拐杖、助行器等"
+                    ],
+                    "high": [
+                        "必须在医生指导下进行，并有人陪同",
+                        "避免任何可能加重关节损伤的运动",
+                        "运动前使用热敷，运动后使用冷敷",
+                        "严格控制运动强度和时间",
+                        "如出现剧烈疼痛，应立即停止运动",
+                        "考虑佩戴适当的关节保护装备"
+                    ]
+                },
+                "bestExerciseTime": "骨关节疾病患者应避免在关节僵硬的早晨进行剧烈运动，建议在下午或傍晚进行，此时关节活动度较好。运动前可进行热敷，增加关节灵活性；运动后可进行冷敷，减轻关节炎症和疼痛。"
+            },
+            "parkinson": {
+                "name": "帕金森病",
+                "recommendedExercises": {
+                    "low": [
+                        "散步：每天20-30分钟，保持平稳步伐",
+                        "太极拳：每周3-4次，每次15-20分钟",
+                        "八段锦：每周3-4次，每次15-20分钟",
+                        "温和的伸展运动：每天10-15分钟"
+                    ],
+                    "moderate": [
+                        "快走：每分钟80-100步，每周3-4次，每次20-30分钟",
+                        "低强度力量训练：使用轻重量，每周2-3次，每次15-20分钟",
+                        "平衡训练：每周3-4次，每次10-15分钟",
+                        "水中运动：每周2-3次，每次15-20分钟"
+                    ],
+                    "high": [
+                        "注意：帕金森病患者应谨慎进行高强度运动",
+                        "在医生指导下可尝试：",
+                        "中强度有氧运动：每周2次，每次15-20分钟",
+                        "中强度力量训练：使用轻重量，高重复次数"
+                    ]
+                },
+                "exerciseTimeFrequency": {
+                    "low": "每天进行，每次15-30分钟，可分多次进行",
+                    "moderate": "每周3-4天，每天20-30分钟，力量训练每周2-3次即可",
+                    "high": "仅在医生指导下进行，每周1-2次，每次15-20分钟"
+                },
+                "precautions": {
+                    "low": [
+                        "避免跌倒，选择安全的运动场地",
+                        "避免突然启动、急停、转身等动作",
+                        "保持良好姿势，避免弯腰驼背",
+                        "如出现平衡问题，可使用辅助工具"
+                    ],
+                    "moderate": [
+                        "避免高强度、快速变换方向的运动",
+                        "力量训练时避免憋气",
+                        "确保运动环境安全，避免跌倒",
+                        "运动时可播放音乐，帮助维持节奏",
+                        "如有步态不稳，可考虑使用拐杖或助行器"
+                    ],
+                    "high": [
+                        "必须在医生指导下进行，并有人陪同",
+                        "避免任何可能导致跌倒的运动",
+                        "避免高强度、快速变换方向的运动",
+                        "严格控制运动强度和时间",
+                        "确保运动环境安全，地面平整",
+                        "随身携带手机，以备紧急情况"
+                    ]
+                },
+                "bestExerciseTime": "帕金森病患者的运动时间相对灵活，但建议在药物效果最佳的时段进行，通常是服药后1-2小时。运动应规律进行，每天固定时间，有助于维持身体功能和运动控制能力。"
+            },
+            "all": {
+                "name": "综合建议",
+                "recommendedExercises": {
+                    "low": [
+                        "散步/健步走：最安全、最容易坚持的运动方式",
+                        "太极拳：改善平衡能力，降低跌倒风险",
+                        "游泳：对关节几乎零压力的全身性运动",
+                        "瑜伽：提升关节灵活性、增强肌力、改善平衡"
+                    ],
+                    "moderate": [
+                        "快走：每分钟100-120步，每天累计30-40分钟",
+                        "骑自行车：低冲击性运动，膝踝压力小",
+                        "轻度力量训练：使用轻量级哑铃、弹力带等",
+                        "水中有氧运动：减轻关节压力，增强心肺功能"
+                    ],
+                    "high": [
+                        "注意：中老年人应谨慎进行高强度运动",
+                        "如需进行，应在医生指导下逐步增加强度",
+                        "避免爆发性、对抗性运动",
+                        "定期进行身体检查，评估运动安全性"
+                    ]
+                },
+                "exerciseTimeFrequency": {
+                    "low": "每天进行，每次20-30分钟，可分多次进行",
+                    "moderate": "每周3-5次，每次30-60分钟，循序渐进增加",
+                    "high": "仅在身体状况允许的情况下，每周1-2次，每次15-20分钟"
+                },
+                "precautions": {
+                    "low": [
+                        "运动前咨询医生，特别是有慢性疾病的中老年人",
+                        "选择合适的运动装备和场地",
+                        "充分热身，至少10分钟",
+                        "控制运动强度，以'身体微汗'为宜"
+                    ],
+                    "moderate": [
+                        "避免过分逞强和攀比",
+                        "避免运动后立刻停下",
+                        "避免空腹/饱腹运动",
+                        "注意环境和安全，选择平坦、通风良好的场地"
+                    ],
+                    "high": [
+                        "必须在医生指导下进行，并有人陪同",
+                        "运动前进行全面身体检查",
+                        "严格控制运动强度和时间",
+                        "随身携带必要药物和手机"
+                    ]
+                },
+                "bestExerciseTime": "中老年人运动时间应根据个人情况和疾病特点选择。一般来说，下午或傍晚是较为适宜的运动时段，此时身体机能较为稳定，温度适宜，光线充足，有助于减少运动风险。"
+            }
+        };
+
+        // 运动图片数据库
+        const exerciseImagesDatabase = {
+            "walking": "https://p3-doubao-search-sign.byteimg.com/tos-cn-i-be4g95zd3a/1011983235291807783~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1779860870&x-signature=lqfFVUz9RFFRR8hP3cgzdKxqFHY%3D",
+            "swimming": "https://p3-doubao-search-sign.byteimg.com/tos-cn-i-be4g95zd3a/918879468164874393~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1779860870&x-signature=dIjc4VK3FOcCadtopyQDK1tROVY%3D",
+            "yoga": "https://p3-doubao-search-sign.byteimg.com/tos-cn-i-be4g95zd3a/1053729793425145901~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1779860870&x-signature=3Wv2UeAMMRftHHg8OrFCukIDEPY%3D",
+            "taiji": "https://p3-doubao-search-sign.byteimg.com/tos-cn-i-be4g95zd3a/919600017648255111~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1779860871&x-signature=Exk9Qu%2F59M%2FnMo7zoDRaIy6m4Jg%3D",
+            "strength": "https://p3-doubao-search-sign.byteimg.com/tos-cn-i-6w9my0ksvp/586a4d43b1ea4f2fa0ad1b5f9c8d44dd~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1779860870&x-signature=xACddwOykh15Ar7pCSg9cYEVwdM%3D",
+            "cycling": "https://p3-doubao-search-sign.byteimg.com/tos-cn-i-be4g95zd3a/926396099013771326~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1779860870&x-signature=t6vTBr%2B8Jw5ZAIpRJSzC5FtJrFM%3D"
+        };
+
+        // 获取慢性病运动建议
+        function getExerciseAdvice() {
+            const diseaseType = document.getElementById('diseaseType').value;
+            const intensity = document.getElementById('elderlyExerciseIntensity').value;
+            
+            // 验证输入
+            if (!diseaseType || !intensity) {
+                alert('请选择疾病类型和运动强度');
+                return;
+            }
+            
+            // 添加加载状态
+            const adviceBtn = document.getElementById('getExerciseAdvice');
+            const originalText = adviceBtn.innerHTML;
+            adviceBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-2"></i> 获取中...';
+            adviceBtn.disabled = true;
+            
+            try {
+                // 获取疾病数据
+                const diseaseData = chronicDiseaseExerciseDatabase[diseaseType];
+                if (!diseaseData) {
+                    alert('未找到该疾病的运动建议');
+                    return;
+                }
+                
+                // 更新标题
+                const adviceTitle = document.getElementById('adviceTitle');
+                adviceTitle.textContent = `${diseaseData.name}患者的${intensity === 'low' ? '低强度' : intensity === 'moderate' ? '中等强度' : '高强度'}运动建议`;
+                
+                // 更新推荐运动
+                const recommendedExercisesList = document.getElementById('recommendedExercises');
+                recommendedExercisesList.innerHTML = '';
+                
+                const exercises = diseaseData.recommendedExercises[intensity];
+                exercises.forEach(exercise => {
+                    const li = document.createElement('li');
+                    li.textContent = exercise;
+                    recommendedExercisesList.appendChild(li);
+                });
+                
+                // 更新运动时间与频率
+                const exerciseTimeFrequency = document.getElementById('exerciseTimeFrequency');
+                exerciseTimeFrequency.textContent = diseaseData.exerciseTimeFrequency[intensity];
+                
+                // 更新注意事项
+                const precautionsList = document.getElementById('precautions');
+                precautionsList.innerHTML = '';
+                
+                const precautions = diseaseData.precautions[intensity];
+                precautions.forEach(precaution => {
+                    const li = document.createElement('li');
+                    li.textContent = precaution;
+                    precautionsList.appendChild(li);
+                });
+                
+                // 更新最佳运动时间
+                const bestExerciseTime = document.getElementById('bestExerciseTime');
+                bestExerciseTime.textContent = diseaseData.bestExerciseTime;
+                
+                // 更新运动图片
+                const exerciseImagesContainer = document.getElementById('exerciseImages');
+                exerciseImagesContainer.innerHTML = '';
+                
+                // 根据疾病类型和强度选择合适的图片
+                let imageTypes = [];
+                
+                if (diseaseType === 'hypertension' || diseaseType === 'heart') {
+                    imageTypes = ['walking', 'taiji', 'yoga'];
+                } else if (diseaseType === 'diabetes' || diseaseType === 'hyperlipidemia') {
+                    imageTypes = ['walking', 'swimming', 'cycling'];
+                } else if (diseaseType === 'osteoporosis' || diseaseType === 'arthritis') {
+                    imageTypes = ['swimming', 'taiji', 'yoga'];
+                } else if (diseaseType === 'parkinson') {
+                    imageTypes = ['walking', 'taiji', 'strength'];
+                } else {
+                    // 综合建议
+                    imageTypes = ['walking', 'swimming', 'taiji'];
+                }
+                
+                // 添加图片
+                imageTypes.forEach(type => {
+                    const imageUrl = exerciseImagesDatabase[type];
+                    if (imageUrl) {
+                        const imageDiv = document.createElement('div');
+                        imageDiv.className = 'bg-gray-50 p-2 rounded-lg text-center';
+                        
+                        const img = document.createElement('img');
+                        img.src = imageUrl;
+                        img.alt = type;
+                        img.className = 'w-full h-40 object-cover rounded-lg mb-2';
+                        
+                        const caption = document.createElement('p');
+                        caption.className = 'text-sm text-gray-700';
+                        caption.textContent = type === 'walking' ? '散步/健步走' : 
+                                            type === 'swimming' ? '游泳' : 
+                                            type === 'yoga' ? '瑜伽' : 
+                                            type === 'taiji' ? '太极拳' : 
+                                            type === 'strength' ? '轻度力量训练' : 
+                                            type === 'cycling' ? '骑自行车' : type;
+                        
+                        imageDiv.appendChild(img);
+                        imageDiv.appendChild(caption);
+                        exerciseImagesContainer.appendChild(imageDiv);
+                    }
+                });
+                
+                // 显示结果
+                const exerciseAdviceResult = document.getElementById('exerciseAdviceResult');
+                exerciseAdviceResult.classList.remove('hidden');
+                
+                // 添加淡入动画效果
+                exerciseAdviceResult.style.opacity = '0';
+                setTimeout(() => {
+                    exerciseAdviceResult.style.transition = 'opacity 0.5s ease-in-out';
+                    exerciseAdviceResult.style.opacity = '1';
+                }, 10);
+                
+            } catch (error) {
+                console.error('获取运动建议时出错:', error);
+                alert('获取运动建议过程中出现错误，请稍后重试');
+            } finally {
+                // 恢复按钮状态
+                adviceBtn.innerHTML = originalText;
+                adviceBtn.disabled = false;
+            }
+        }
+
+        // DOM 加载完成后执行
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初始化图表
+            initCharts();
+            
+            // 绑定事件
+            const calculateCaloriesBtn = document.getElementById('calculateCalories');
+            const calculateRecoveryBtn = document.getElementById('calculateRecovery');
+            const searchFoodBtn = document.getElementById('searchFood');
+            const foodSearchInput = document.getElementById('foodSearch');
+            const getExerciseAdviceBtn = document.getElementById('getExerciseAdvice');
+            const addFoodBtn = document.getElementById('addFoodBtn');
+            const addToDietBtn = document.querySelector('#foodResult .btn-secondary');
+            const startAnalysisBtn = document.getElementById('startAnalysisBtn');
+            const learnMoreBtn = document.getElementById('learnMoreBtn');
+            
+            // 检查元素是否存在，避免出现空引用错误
+            if (calculateCaloriesBtn) {
+                calculateCaloriesBtn.addEventListener('click', calculateCalories);
+            }
+            
+            if (calculateRecoveryBtn) {
+                calculateRecoveryBtn.addEventListener('click', calculateRecovery);
+            }
+            
+            if (searchFoodBtn) {
+                searchFoodBtn.addEventListener('click', searchFood);
+            }
+            
+            if (foodSearchInput) {
+                foodSearchInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        searchFood();
+                    }
+                });
+            }
+            
+            if (getExerciseAdviceBtn) {
+                getExerciseAdviceBtn.addEventListener('click', getExerciseAdvice);
+            }
+            
+            if (addFoodBtn) {
+                addFoodBtn.addEventListener('click', showAddFoodModal);
+            }
+            
+            if (addToDietBtn) {
+                addToDietBtn.addEventListener('click', addToTodayDiet);
+            }
+            
+            if (startAnalysisBtn) {
+                startAnalysisBtn.addEventListener('click', function() {
+                    // 滚动到运动分析区域
+                    document.getElementById('exercise').scrollIntoView({
+                        behavior: 'smooth'
+                    });
+                });
+            }
+            
+            if (learnMoreBtn) {
+                learnMoreBtn.addEventListener('click', function() {
+                    // 显示了解更多模态框
+                    showLearnMoreModal();
+                });
+            }
+        });
+
+        // 初始化图表
+        function initCharts() {
+            // 能量平衡图表
+            const balanceCtx = document.getElementById('balanceChart').getContext('2d');
+            const balanceChart = new Chart(balanceCtx, {
+                type: 'line',
+                data: {
+                    labels: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+                    datasets: [{
+                        label: '能量平衡',
+                        data: [-200, -150, -300, -250, -400, -350, -350],
+                        borderColor: '#4caf50',
+                        backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            grid: {
+                                display: false
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+
+            // 营养摄入分布图表
+            const nutritionCtx = document.getElementById('nutritionChart').getContext('2d');
+            const nutritionChart = new Chart(nutritionCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['蛋白质', '脂肪', '碳水化合物'],
+                    datasets: [{
+                        data: [21, 32, 47],
+                        backgroundColor: [
+                            '#3b82f6', // 蓝色
+                            '#eab308', // 黄色
+                            '#22c55e'  // 绿色
+                        ],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    return `${label}: ${value}%`;
+                                }
+                            }
+                        }
+                    },
+                    cutout: '70%'
+                }
+            });
+        }
+
+        // 计算运动消耗卡路里
+        function calculateCalories() {
+            const exerciseType = document.getElementById('exerciseType').value;
+            const duration = parseFloat(document.getElementById('exerciseDuration').value);
+            const weight = parseFloat(document.getElementById('userWeight').value);
+            
+            // 验证输入
+            if (!exerciseType || isNaN(duration) || isNaN(weight)) {
+                alert('请填写完整的运动信息');
+                return;
+            }
+            
+            // 确定运动强度
+            let intensity = 'moderate'; // 默认中等强度
+            if (exerciseType === 'running' || exerciseType === 'jumping' || exerciseType === 'hiit') {
+                // 根据运动类型和时长推断强度
+                if (duration < 20) {
+                    intensity = 'high';
+                } else if (duration > 60) {
+                    intensity = 'low';
+                }
+            }
+            
+            // 计算消耗的卡路里
+            const caloriesPerHourPerKg = exerciseDatabase[exerciseType][intensity];
+            const caloriesBurned = (caloriesPerHourPerKg * weight * duration) / 60;
+            
+            // 显示结果
+            document.getElementById('caloriesBurned').textContent = Math.round(caloriesBurned);
+            document.getElementById('calorieResult').classList.remove('hidden');
+        }
+
+        // 计算恢复时间
+        function calculateRecovery() {
+            const exerciseType = document.getElementById('recoveryExerciseType').value;
+            const intensity = document.getElementById('exerciseIntensity').value;
+            const duration = parseFloat(document.getElementById('recoveryExerciseDuration').value);
+            
+            // 验证输入
+            if (!exerciseType || !intensity || isNaN(duration)) {
+                alert('请填写完整的运动信息');
+                return;
+            }
+            
+            // 获取基础恢复时间
+            let recoveryTime = recoveryDatabase[exerciseType][intensity];
+            
+            // 根据时长调整恢复时间
+            if (duration > 60) {
+                // 延长恢复时间
+                const factor = 1 + (duration - 60) / 120; // 最多增加50%
+                recoveryTime.min = Math.round(recoveryTime.min * factor);
+                recoveryTime.max = Math.round(recoveryTime.max * factor);
+            }
+            
+            // 计算下次训练日期
+            const today = new Date();
+            const nextTrainingDate = new Date(today);
+            nextTrainingDate.setDate(today.getDate() + Math.ceil(recoveryTime.max / 24));
+            
+            // 格式化日期
+            const formattedDate = `${nextTrainingDate.getFullYear()}年${nextTrainingDate.getMonth() + 1}月${nextTrainingDate.getDate()}日`;
+            
+            // 显示结果
+            document.getElementById('recoveryTime').textContent = `${recoveryTime.min}-${recoveryTime.max} 小时`;
+            document.getElementById('nextTrainingDate').textContent = formattedDate;
+            
+            // 显示恢复建议
+            const suggestionsList = document.getElementById('recoverySuggestions');
+            suggestionsList.innerHTML = '';
+            
+            const suggestions = recoverySuggestions[exerciseType][intensity];
+            suggestions.forEach(suggestion => {
+                const li = document.createElement('li');
+                li.textContent = suggestion;
+                suggestionsList.appendChild(li);
+            });
+            
+            document.getElementById('recoveryResult').classList.remove('hidden');
+        }
+
+        // 今日饮食数据存储
+        let todayDiet = {
+            breakfast: [],
+            lunch: [],
+            dinner: [],
+            snack: []
+        };
+        
+        // 显示添加食物模态框
+        function showAddFoodModal() {
+            const modal = document.getElementById('addFoodModal');
+            modal.classList.remove('hidden');
+            // 添加淡入动画
+            setTimeout(() => {
+                modal.querySelector('.bg-white').classList.add('scale-100');
+                modal.querySelector('.bg-white').classList.remove('scale-95');
+            }, 10);
+        }
+        
+        // 隐藏添加食物模态框
+        function hideAddFoodModal() {
+            const modal = document.getElementById('addFoodModal');
+            // 添加淡出动画
+            modal.querySelector('.bg-white').classList.add('scale-95');
+            modal.querySelector('.bg-white').classList.remove('scale-100');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 200);
+        }
+        
+        // 显示了解更多模态框
+        function showLearnMoreModal() {
+            const modal = document.getElementById('learnMoreModal');
+            modal.classList.remove('hidden');
+            // 添加淡入动画
+            setTimeout(() => {
+                modal.querySelector('.bg-white').classList.add('scale-100');
+                modal.querySelector('.bg-white').classList.remove('scale-95');
+            }, 10);
+        }
+        
+        // 隐藏了解更多模态框
+        function hideLearnMoreModal() {
+            const modal = document.getElementById('learnMoreModal');
+            // 添加淡出动画
+            modal.querySelector('.bg-white').classList.add('scale-95');
+            modal.querySelector('.bg-white').classList.remove('scale-100');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 200);
+        }
+        
+        // 添加食物到今日饮食
+        function addToTodayDiet() {
+            // 获取当前搜索到的食物信息
+            const foodNameElement = document.getElementById('foodName');
+            if (!foodNameElement || !foodNameElement.textContent) {
+                alert('请先搜索食物');
+                return;
+            }
+            
+            const foodName = foodNameElement.textContent;
+            const foodData = foodDatabase[foodName];
+            
+            if (!foodData) {
+                alert('未找到该食物的营养信息');
+                return;
+            }
+            
+            // 显示添加食物模态框并预填食物名称
+            const foodNameInput = document.getElementById('foodNameInput');
+            if (foodNameInput) {
+                foodNameInput.value = foodName;
+            }
+            
+            showAddFoodModal();
+        }
+        
+        // 从搜索结果添加到今日饮食
+        function addFoodFromSearch() {
+            const foodNameElement = document.getElementById('foodName');
+            if (!foodNameElement || !foodNameElement.textContent) {
+                alert('请先搜索食物');
+                return;
+            }
+            
+            const foodName = foodNameElement.textContent;
+            const foodData = foodDatabase[foodName];
+            
+            if (!foodData) {
+                alert('未找到该食物的营养信息');
+                return;
+            }
+            
+            // 显示添加食物模态框并预填食物名称
+            const foodNameInput = document.getElementById('foodNameInput');
+            if (foodNameInput) {
+                foodNameInput.value = foodName;
+            }
+            
+            showAddFoodModal();
+        }
+        
+        // 搜索食物营养成分
+        function searchFood() {
+            // 添加加载状态
+            const searchBtn = document.getElementById('searchFood');
+            const originalText = searchBtn.innerHTML;
+            searchBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-2"></i> 查询中...';
+            searchBtn.disabled = true;
+            
+            try {
+                const foodSearchInput = document.getElementById('foodSearch');
+                const foodName = foodSearchInput ? foodSearchInput.value.trim() : '';
+                
+                if (!foodName) {
+                    alert('请输入食物名称');
+                    return;
+                }
+                
+                // 检查食物数据库（支持模糊匹配）
+                let foundFood = null;
+                let foundKey = null;
+                
+                // 精确匹配
+                if (foodDatabase[foodName]) {
+                    foundFood = foodDatabase[foodName];
+                    foundKey = foodName;
+                } else {
+                    // 模糊匹配
+                    for (const key in foodDatabase) {
+                        if (key.includes(foodName) || foodName.includes(key)) {
+                            foundFood = foodDatabase[key];
+                            foundKey = key;
+                            break;
+                        }
+                    }
+                }
+                
+                if (foundFood && foundKey) {
+                    // 显示食物名称和热量
+                    const foodNameElement = document.getElementById('foodName');
+                    const foodCaloriesElement = document.getElementById('foodCalories');
+                    
+                    if (foodNameElement) foodNameElement.textContent = foundKey;
+                    if (foodCaloriesElement) foodCaloriesElement.textContent = `${foundFood.calories} 卡路里`;
+                    
+                    // 显示营养成分
+                    const proteinAmountElement = document.getElementById('proteinAmount');
+                    const fatAmountElement = document.getElementById('fatAmount');
+                    const carbsAmountElement = document.getElementById('carbsAmount');
+                    const fiberAmountElement = document.getElementById('fiberAmount');
+                    
+                    if (proteinAmountElement) proteinAmountElement.textContent = `${foundFood.protein}g`;
+                    if (fatAmountElement) fatAmountElement.textContent = `${foundFood.fat}g`;
+                    if (carbsAmountElement) carbsAmountElement.textContent = `${foundFood.carbs}g`;
+                    if (fiberAmountElement) fiberAmountElement.textContent = `${foundFood.fiber || 0}g`;
+                    
+                    // 设置进度条
+                    // 假设每日推荐摄入量: 蛋白质50g, 脂肪65g, 碳水化合物300g, 膳食纤维25g
+                    const proteinBarElement = document.getElementById('proteinBar');
+                    const fatBarElement = document.getElementById('fatBar');
+                    const carbsBarElement = document.getElementById('carbsBar');
+                    const fiberBarElement = document.getElementById('fiberBar');
+                    
+                    if (proteinBarElement) proteinBarElement.style.width = `${Math.min(100, (foundFood.protein / 50) * 100)}%`;
+                    if (fatBarElement) fatBarElement.style.width = `${Math.min(100, (foundFood.fat / 65) * 100)}%`;
+                    if (carbsBarElement) carbsBarElement.style.width = `${Math.min(100, (foundFood.carbs / 300) * 100)}%`;
+                    if (fiberBarElement) fiberBarElement.style.width = `${Math.min(100, ((foundFood.fiber || 0) / 25) * 100)}%`;
+                    
+                    // 显示结果
+                    const foodResultElement = document.getElementById('foodResult');
+                    if (foodResultElement) {
+                        foodResultElement.classList.remove('hidden');
+                        // 添加淡入动画效果
+                        foodResultElement.style.opacity = '0';
+                        setTimeout(() => {
+                            foodResultElement.style.transition = 'opacity 0.5s ease-in-out';
+                            foodResultElement.style.opacity = '1';
+                        }, 10);
+                    }
+                } else {
+                    alert('未找到该食物的营养信息，请尝试其他食物');
+                }
+            } catch (error) {
+                console.error('搜索食物时出错:', error);
+                alert('查询过程中出现错误，请稍后重试');
+            } finally {
+                // 恢复按钮状态
+                if (searchBtn) {
+                    searchBtn.innerHTML = originalText;
+                    searchBtn.disabled = false;
+                }
+            }
+        }
+    </script>
+    
+    <script>
+        // 绑定模态框事件
+        document.addEventListener('DOMContentLoaded', function() {
+            const addFoodModal = document.getElementById('addFoodModal');
+            const closeAddFoodModalBtn = document.getElementById('closeModal');
+            const cancelAddFoodBtn = document.getElementById('cancelAddFood');
+            const addFoodForm = document.getElementById('addFoodForm');
+            
+            const learnMoreModal = document.getElementById('learnMoreModal');
+            const closeLearnMoreModalBtn = document.getElementById('closeLearnMoreModal');
+            const closeLearnMoreBtn = document.getElementById('closeLearnMoreBtn');
+            
+            // 关闭添加食物模态框
+            if (closeAddFoodModalBtn) {
+                closeAddFoodModalBtn.addEventListener('click', hideAddFoodModal);
+            }
+            
+            if (cancelAddFoodBtn) {
+                cancelAddFoodBtn.addEventListener('click', hideAddFoodModal);
+            }
+            
+            // 点击添加食物模态框外部关闭
+            if (addFoodModal) {
+                addFoodModal.addEventListener('click', function(e) {
+                    if (e.target === addFoodModal) {
+                        hideAddFoodModal();
+                    }
+                });
+            }
+            
+            // 关闭了解更多模态框
+            if (closeLearnMoreModalBtn) {
+                closeLearnMoreModalBtn.addEventListener('click', hideLearnMoreModal);
+            }
+            
+            if (closeLearnMoreBtn) {
+                closeLearnMoreBtn.addEventListener('click', hideLearnMoreModal);
+            }
+            
+            // 点击了解更多模态框外部关闭
+            if (learnMoreModal) {
+                learnMoreModal.addEventListener('click', function(e) {
+                    if (e.target === learnMoreModal) {
+                        hideLearnMoreModal();
+                    }
+                });
+            }
+            
+            // 提交添加食物表单
+            if (addFoodForm) {
+                form.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    const foodName = document.getElementById('foodNameInput').value.trim();
+                    const amount = parseFloat(document.getElementById('foodAmountInput').value);
+                    const mealType = document.getElementById('mealTypeInput').value;
+                    
+                    // 验证输入
+                    if (!foodName || isNaN(amount) || amount <= 0) {
+                        alert('请填写完整的食物信息');
+                        return;
+                    }
+                    
+                    // 检查食物数据库
+                    let foundFood = null;
+                    let foundKey = null;
+                    
+                    // 精确匹配
+                    if (foodDatabase[foodName]) {
+                        foundFood = foodDatabase[foodName];
+                        foundKey = foodName;
+                    } else {
+                        // 模糊匹配
+                        for (const key in foodDatabase) {
+                            if (key.includes(foodName) || foodName.includes(key)) {
+                                foundFood = foodDatabase[key];
+                                foundKey = key;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (!foundFood) {
+                        alert('未找到该食物的营养信息，请尝试其他食物');
+                        return;
+                    }
+                    
+                    // 计算实际摄入量（根据份量调整）
+                    const ratio = amount / 100; // 数据库中是100克的营养成分
+                    const actualCalories = Math.round(foundFood.calories * ratio);
+                    const actualProtein = (foundFood.protein * ratio).toFixed(1);
+                    const actualFat = (foundFood.fat * ratio).toFixed(1);
+                    const actualCarbs = (foundFood.carbs * ratio).toFixed(1);
+                    
+                    // 添加到今日饮食
+                    const foodItem = {
+                        name: foundKey,
+                        amount: amount,
+                        calories: actualCalories,
+                        protein: actualProtein,
+                        fat: actualFat,
+                        carbs: actualCarbs,
+                        time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+                    };
+                    
+                    todayDiet[mealType].push(foodItem);
+                    
+                    // 更新总摄入热量
+                    updateTotalIntake();
+                    
+                    // 显示成功提示
+                    alert(`${foundKey} (${amount}克) 已成功添加到${mealType === 'breakfast' ? '早餐' : mealType === 'lunch' ? '午餐' : mealType === 'dinner' ? '晚餐' : '加餐'}`);
+                    
+                    // 重置表单并关闭模态框
+                    form.reset();
+                    hideAddFoodModal();
+                });
+            }
+        });
+        
+        // 更新总摄入热量显示
+        function updateTotalIntake() {
+            let totalCalories = 0;
+            let totalProtein = 0;
+            let totalFat = 0;
+            let totalCarbs = 0;
+            
+            // 计算所有餐次的总和
+            for (const mealType in todayDiet) {
+                todayDiet[mealType].forEach(food => {
+                    totalCalories += food.calories;
+                    totalProtein += parseFloat(food.protein);
+                    totalFat += parseFloat(food.fat);
+                    totalCarbs += parseFloat(food.carbs);
+                });
+            }
+            
+            // 更新仪表盘显示
+            const calorieIntakeElement = document.querySelector('#dashboard .text-3xl.font-bold.text-gray-800');
+            if (calorieIntakeElement) {
+                calorieIntakeElement.textContent = totalCalories;
+            }
+            
+            // 更新营养摄入分布图表
+            const nutritionChart = Chart.getChart('nutritionChart');
+            if (nutritionChart) {
+                // 计算百分比
+                const totalNutrients = totalProtein + totalFat + totalCarbs;
+                const proteinPercent = totalNutrients > 0 ? Math.round((totalProtein * 4 / totalCalories) * 100) : 0; // 蛋白质4卡/克
+                const fatPercent = totalNutrients > 0 ? Math.round((totalFat * 9 / totalCalories) * 100) : 0; // 脂肪9卡/克
+                const carbsPercent = totalNutrients > 0 ? Math.round((totalCarbs * 4 / totalCalories) * 100) : 0; // 碳水4卡/克
+                
+                nutritionChart.data.datasets[0].data = [proteinPercent, fatPercent, carbsPercent];
+                nutritionChart.update();
+            }
+            
+            // 更新营养摄入详情
+            const proteinDetailElement = document.querySelector('#dashboard .text-sm.font-medium.text-gray-800');
+            if (proteinDetailElement) {
+                proteinDetailElement.textContent = `${totalProtein.toFixed(1)}g (${Math.round((totalProtein * 4 / totalCalories) * 100)}%)`;
+            }
+            
+            // 更新蛋白质进度条
+            const proteinBarElement = document.querySelector('#dashboard .bg-blue-500.h-full.rounded-full');
+            if (proteinBarElement) {
+                proteinBarElement.style.width = `${Math.min(100, (totalProtein / 150) * 100)}%`; // 假设目标150g
+            }
+            
+            // 更新能量平衡
+            const energyBalanceElement = document.querySelector('#dashboard .text-3xl.font-bold.text-success');
+            if (energyBalanceElement) {
+                const energyOut = 2200; // 假设消耗2200卡
+                const balance = totalCalories - energyOut;
+                energyBalanceElement.textContent = balance > 0 ? `+${balance}` : balance;
+            }
+        }
+    </script>
+</body>
+</html>
